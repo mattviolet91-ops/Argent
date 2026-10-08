@@ -41,6 +41,7 @@ class MoneyReportService
         $this->sync->runRecurring($today);
         $report = $this->build($today->copy()->startOfWeek()->subWeek());
         $this->notify($report);
+        app(MoneyAlertService::class)->check();
 
         return $report;
     }

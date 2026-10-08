@@ -26,6 +26,16 @@
     @include('_scope')
     @include('_period', ['periods' => \App\Http\Controllers\DashboardController::PERIODS])
 
+    @if ($alerts)
+        <div class="money-alerts" role="status" aria-label="Alertes">
+            @foreach ($alerts as $alert)
+                <a class="alert alert-{{ $alert['level'] === 'danger' ? 'error' : 'warning' }} money-alert" href="{{ $alert['url'] }}">
+                    <strong>{{ $alert['title'] }}</strong> {{ $alert['text'] }} <span class="m-amt">{{ $alert['details'] }}</span>
+                </a>
+            @endforeach
+        </div>
+    @endif
+
     @if ($totals['income'] === 0 && $totals['expense'] === 0 && $latest->isEmpty())
         <div class="card getting-started" style="margin-bottom:1rem">
             <h2>Bienvenue dans votre app Argent</h2>

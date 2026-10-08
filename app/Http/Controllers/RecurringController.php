@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\ReadsMoneyInput;
 use App\Models\MoneyCategory;
 use App\Models\MoneyRecurring;
+use App\Services\MoneyAlertService;
 use App\Services\MoneySyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,6 +37,7 @@ class RecurringController extends Controller
         MoneyRecurring::query()->create($this->validated($request) + ['active' => true]);
         // Échéance déjà passée (ex. loyer du 1er saisi le 5) : ajoutée tout de suite.
         $sync->runRecurring();
+        app(MoneyAlertService::class)->check();
 
         return redirect()->route('recurrings.index')->with('status', 'Ajouté. Il sera noté tout seul à chaque échéance.');
     }
@@ -49,6 +51,7 @@ class RecurringController extends Controller
         }
         $recurring->update($this->validated($request));
         $sync->runRecurring();
+        app(MoneyAlertService::class)->check();
 
         return redirect()->route('recurrings.index')->with('status', 'Enregistré.');
     }

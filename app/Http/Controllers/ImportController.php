@@ -7,6 +7,7 @@ use App\Models\MoneyAccount;
 use App\Models\MoneyCategory;
 use App\Models\MoneyTransaction;
 use App\Services\ActivityLogger;
+use App\Services\MoneyAlertService;
 use App\Services\MoneyImportService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -113,6 +114,7 @@ class ImportController extends Controller
             }
         });
         $this->forget($request);
+        app(MoneyAlertService::class)->check();
         ActivityLogger::log('argent.import', 'Relevé importé dans l\'app Argent ('.$created.' opération(s))');
 
         return redirect()->route('transactions.index', ['compte' => $account->id, 'periode' => 'tout'])

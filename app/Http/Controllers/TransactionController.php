@@ -7,6 +7,7 @@ use App\Http\Controllers\Concerns\ResolvesPeriod;
 use App\Models\MoneyAccount;
 use App\Models\MoneyCategory;
 use App\Models\MoneyTransaction;
+use App\Services\MoneyAlertService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -81,6 +82,7 @@ class TransactionController extends Controller
 
         if ($data['type'] === 'transfer') {
             $this->transfer($data, $amount);
+            app(MoneyAlertService::class)->check();
 
             return back()->with('status', 'Virement enregistré.');
         }
@@ -97,6 +99,8 @@ class TransactionController extends Controller
             'notes' => $data['notes'] ?? null,
             'source' => 'manual',
         ]);
+
+        app(MoneyAlertService::class)->check();
 
         return back()->with('status', $data['type'] === 'expense' ? 'Dépense ajoutée.' : 'Revenu ajouté.');
     }
@@ -125,6 +129,7 @@ class TransactionController extends Controller
         if ($transaction->source === 'devis') {
             $category = $this->category($data['category_id'] ?? null, MoneyTransaction::kindFor($transaction->amount));
             $transaction->update(['category_id' => $category?->id, 'label' => $data['label'], 'notes' => $data['notes'] ?? null]);
+            app(MoneyAlertService::class)->check();
 
             return redirect()->route('transactions.index')->with('status', 'Mouvement modifié.');
         }
@@ -142,6 +147,8 @@ class TransactionController extends Controller
                 }
             });
 
+            app(MoneyAlertService::class)->check();
+
             return redirect()->route('transactions.index')->with('status', 'Virement modifié.');
         }
 
@@ -158,6 +165,8 @@ class TransactionController extends Controller
             'notes' => $data['notes'] ?? null,
         ]);
 
+        app(MoneyAlertService::class)->check();
+
         return redirect()->route('transactions.index')->with('status', 'Mouvement modifié.');
     }
 
@@ -170,6 +179,8 @@ class TransactionController extends Controller
             $this->peer($transaction)?->delete();
             $transaction->delete();
         });
+
+        app(MoneyAlertService::class)->check();
 
         return redirect()->route('transactions.index')->with('status', 'Mouvement supprimé.');
     }

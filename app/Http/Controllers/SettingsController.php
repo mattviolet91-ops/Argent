@@ -8,6 +8,7 @@ use App\Models\MoneyTransaction;
 use App\Services\ActivityLogger;
 use App\Services\BackupService;
 use App\Services\DevisClient;
+use App\Services\MoneyAlertService;
 use App\Services\MoneyLockService;
 use App\Services\MoneySyncService;
 use App\Services\PushService;
@@ -48,6 +49,8 @@ class SettingsController extends Controller
             'lockMinutes' => $this->lock->lockMinutes(),
             'weeklyPush' => (bool) $this->settings->get('argent.weekly_push', true),
             'pushAmounts' => (bool) $this->settings->get('argent.push_amounts', false),
+            'alertsEnabled' => (bool) $this->settings->get('alerts.enabled', true),
+            'alertsBudgetWarning' => (bool) $this->settings->get('alerts.budget_warning', true),
         ]);
     }
 
@@ -65,6 +68,8 @@ class SettingsController extends Controller
             'argent.cash_account_id' => $request->integer('cash_account_id') ?: null,
             'argent.weekly_push' => $request->boolean('weekly_push'),
             'argent.push_amounts' => $request->boolean('push_amounts'),
+            'alerts.enabled' => $request->boolean('alerts_enabled'),
+            'alerts.budget_warning' => $request->boolean('alerts_budget_warning'),
         ]);
         $this->lock->unlock($request);
 
@@ -154,6 +159,7 @@ class SettingsController extends Controller
             return back()->withErrors(['sync' => 'Reliez d\'abord l\'app de devis et choisissez le compte qui reçoit les paiements (Réglages).']);
         }
         $this->settings->set(['devis.last_error' => null]);
+        app(MoneyAlertService::class)->check();
 
         return back()->with('status', 'À jour : '.$result['added'].' ajouté(s), '.$result['updated'].' modifié(s), '.$result['removed'].' retiré(s)'
             .($fixed ? ', '.$fixed.' dépense(s) fixe(s)' : '').'.');

@@ -966,3 +966,6 @@ details > summary.btn::-webkit-details-marker { display: none; }
 .report-bars { display: grid; gap: .35rem; }
 .money-note { font-size: .8125rem; color: var(--text-muted); margin: .5rem 0 0; }
 [data-when][hidden] { display: none !important; }
+.money-alerts { display: grid; gap: .5rem; margin-bottom: 1rem; }
+.money-alert { display: block; text-decoration: none; color: inherit; margin: 0; }
+.money-alert strong { margin-right: .25rem; }

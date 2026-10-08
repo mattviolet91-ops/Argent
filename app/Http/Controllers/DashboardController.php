@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\ReadsMoneyInput;
 use App\Http\Controllers\Concerns\ResolvesPeriod;
 use App\Models\MoneyGoal;
 use App\Models\MoneyTransaction;
+use App\Services\MoneyAlertService;
 use App\Services\MoneyStatsService;
 use App\Services\MoneySyncService;
 use App\Services\Settings;
@@ -57,6 +58,7 @@ class DashboardController extends Controller
             'syncAccount' => $sync->account(),
             'lastSync' => $lastSync ? Carbon::parse($lastSync) : null,
             'devisUrl' => rtrim((string) $settings->get('devis.url', ''), '/'),
+            'alerts' => app(MoneyAlertService::class)->current(),
             'latest' => MoneyTransaction::query()->inScope($scope)->with(['account', 'category'])
                 ->whereDate('occurred_on', '<=', today())->latest('occurred_on')->latest('id')->limit(8)->get(),
             'accountOptions' => $this->accountOptions(),

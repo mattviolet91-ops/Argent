@@ -22,11 +22,11 @@ class MoneyAccount extends Model
         'pro' => 'Pro',
     ];
 
-    protected $fillable = ['name', 'kind', 'scope', 'opening_balance', 'opening_on', 'color', 'position', 'archived_at'];
+    protected $fillable = ['name', 'kind', 'scope', 'opening_balance', 'opening_on', 'alert_below', 'color', 'position', 'archived_at'];
 
     protected function casts(): array
     {
-        return ['opening_balance' => 'integer', 'opening_on' => 'date', 'archived_at' => 'datetime'];
+        return ['opening_balance' => 'integer', 'alert_below' => 'integer', 'opening_on' => 'date', 'archived_at' => 'datetime'];
     }
 
     public function transactions(): HasMany

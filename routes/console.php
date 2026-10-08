@@ -6,5 +6,7 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::command('app:backup')->dailyAt('01:30');
 // Dépenses et revenus fixes du jour.
 Schedule::command('app:argent-jour')->dailyAt('06:10');
+// Budgets dépassés et soldes bas (aussi vérifiés à chaque ajout de mouvement).
+Schedule::command('app:argent-alertes')->dailyAt('08:30');
 // Chaque lundi : mise à jour depuis l'app de devis, bilan de la semaine passée, notification.
 Schedule::command('app:argent-semaine')->weeklyOn(1, '07:00');

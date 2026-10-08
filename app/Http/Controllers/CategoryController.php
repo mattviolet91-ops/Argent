@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\ReadsMoneyInput;
 use App\Models\MoneyCategory;
 use App\Models\MoneyTransaction;
+use App\Services\MoneyAlertService;
 use App\Services\MoneyStatsService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -68,6 +69,7 @@ class CategoryController extends Controller
             $data['archived_at'] = null;
         }
         $category->update(array_filter($data, fn ($value, $key) => $key !== 'color' || $value, ARRAY_FILTER_USE_BOTH));
+        app(MoneyAlertService::class)->check();
 
         return redirect()->route('categories.index')->with('status', 'Catégorie « '.$category->name.' » enregistrée.');
     }

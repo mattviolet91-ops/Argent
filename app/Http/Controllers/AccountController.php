@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ReadsMoneyInput;
 use App\Models\MoneyAccount;
+use App\Services\MoneyAlertService;
 use App\Services\MoneyStatsService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,6 +38,7 @@ class AccountController extends Controller
         $data = $this->validated($request);
         $data['position'] = (int) MoneyAccount::query()->max('position') + 1;
         $account = MoneyAccount::query()->create($data);
+        app(MoneyAlertService::class)->check();
 
         return redirect()->route('accounts.show', $account)->with('status', 'Compte ajouté.');
     }
@@ -65,6 +67,7 @@ class AccountController extends Controller
         $data = $this->validated($request);
         $data['archived_at'] = $request->boolean('archived') ? ($account->archived_at ?? now()) : null;
         $account->update($data);
+        app(MoneyAlertService::class)->check();
 
         return redirect()->route('accounts.show', $account)->with('status', 'Compte enregistré.');
     }
@@ -93,6 +96,7 @@ class AccountController extends Controller
             'color' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
         ], [], ['name' => 'nom', 'opening_on' => 'date du solde']);
         $data['opening_balance'] = $this->amount($request, 'opening_balance', positive: false, required: false) ?? 0;
+        $data['alert_below'] = $this->amount($request, 'alert_below', positive: false, required: false);
 
         return $data;
     }
