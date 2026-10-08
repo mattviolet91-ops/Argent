@@ -4,6 +4,7 @@
 #   git clone https://github.com/mattviolet91-ops/Argent-.git ~/argent-source && bash ~/argent-source/scripts/install.sh
 #
 # Peut être relancé sans risque : rien n'est effacé (base, réglages et compte sont gardés).
+# Si la connexion du Terminal coupe en cours de route : bash ~/argent-source/scripts/install.sh
 set -eo pipefail
 export PATH="/usr/local/bin:/usr/bin:/bin:$HOME/bin:$HOME/.local/bin:$PATH"
 
@@ -19,7 +20,7 @@ command -v composer >/dev/null || { echo "Composer introuvable sur ce serveur.";
 
 echo "== 2/6 Dépendances (1 à 2 minutes)"
 cd "$SRC"
-composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction -q
+composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --no-progress
 
 echo "== 3/6 Copie des fichiers dans $APP"
 mkdir -p "$APP"
@@ -36,10 +37,7 @@ fi
 [ -f storage/argent.sqlite ] || { touch storage/argent.sqlite; chmod 600 storage/argent.sqlite; }
 php artisan migrate --force
 
-echo "== 5/6 Votre compte"
-php artisan app:create-user --si-absent
-
-echo "== 6/6 Tâches automatiques (sauvegardes, bilan du lundi, mises à jour)"
+echo "== 5/6 Tâches automatiques (sauvegardes, bilan du lundi, mises à jour)"
 php artisan config:cache -q && php artisan route:cache -q && php artisan view:cache -q
 git -C "$SRC" rev-parse HEAD > "$HOME/.argent-deployed-commit"
 PHP_BIN="$(command -v php)"
@@ -50,6 +48,13 @@ CURRENT="$(crontab -l 2>/dev/null || true)"
     echo "* * * * * cd $APP && $PHP_BIN artisan schedule:run >> /dev/null 2>&1"
     echo "*/10 * * * * /bin/bash $SRC/scripts/deploy.sh"
 } | crontab -
+
+echo "== 6/6 Votre compte"
+if [ -t 0 ]; then
+    php artisan app:create-user --si-absent
+else
+    echo "Créez votre compte avec : cd ~/argent && php artisan app:create-user"
+fi
 
 echo
 echo "Terminé. Ouvrez $URL (après avoir activé le HTTPS : cPanel → Statut SSL/TLS → AutoSSL)."
