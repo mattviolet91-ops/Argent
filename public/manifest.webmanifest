@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Argent",
+  "short_name": "Argent",
+  "description": "Comptes perso et pro, budgets et objectifs",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ECF0F1",
+  "theme_color": "#1E7F4F",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
