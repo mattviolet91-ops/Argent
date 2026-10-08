@@ -10,7 +10,7 @@
     @include('_scope')
     @include('_period')
 
-    @php $filtered = $filters['q'] || $filters['compte'] || $filters['categorie'] !== '' || $filters['type'] !== ''; @endphp
+    @php $filtered = $filters['q'] || $filters['compte'] || $filters['categorie'] !== '' || $filters['type'] !== '' || $filters['projet']; @endphp
     <details class="card money-filters" @if ($filtered) open @endif>
     <summary>Filtrer, rechercher{{ $filtered ? ' (filtre actif)' : '' }}</summary>
     <form method="GET" action="{{ route('transactions.index') }}" class="filters" style="margin-top:1rem">
@@ -44,8 +44,20 @@
                     @foreach (\App\Http\Controllers\TransactionController::TYPES as $key => $label)
                         <option value="{{ $key }}" @selected($filters['type'] === $key)>{{ $label }}</option>
                     @endforeach
+                    <option value="note-de-frais" @selected($filters['type'] === 'note-de-frais')>Notes de frais</option>
                 </select>
             </div>
+            @if ($tagOptions->isNotEmpty())
+                <div class="field">
+                    <label for="projet">Chantier / projet</label>
+                    <select id="projet" name="projet">
+                        <option value="">Tous</option>
+                        @foreach ($tagOptions as $tagOption)
+                            <option value="{{ $tagOption->id }}" @selected($filters['projet'] === $tagOption->id)>{{ $tagOption->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            @endif
         </div>
         <div class="form-actions" style="margin-top:.75rem">
             <button class="btn btn-secondary" type="submit">Filtrer</button>
@@ -81,7 +93,15 @@
                             </span>
                             <span class="list-main">
                                 <strong>{{ $t->label }}</strong>
-                                <span class="muted small">{{ $t->category?->name ?? ($t->isTransfer() ? 'Virement' : 'Sans catégorie') }} · {{ $t->account?->name }}@if ($t->source !== 'manual') · {{ \App\Models\MoneyTransaction::SOURCES[$t->source] ?? '' }}@endif</span>
+                                <span class="muted small">{{ $t->category?->name ?? ($t->isTransfer() ? 'Virement' : 'Sans catégorie') }} · {{ $t->account?->name }}@if ($t->source !== 'manual') · {{ \App\Models\MoneyTransaction::SOURCES[$t->source] ?? '' }}@endif
+                                    @if ($t->attachments_count) · <x-icon name="paperclip" class="icon icon-inline" /><span class="visually-hidden">justificatif</span>@endif
+                                </span>
+                                @if ($t->tags->isNotEmpty() || $t->isClaim())
+                                    <span class="tx-tags">
+                                        @if ($t->isClaim())<span class="badge {{ $t->claim === 'rembourse' ? 'badge-success' : 'badge-warning' }}">{{ $t->claim === 'rembourse' ? 'Note de frais remboursée' : 'Note de frais' }}</span>@endif
+                                        @foreach ($t->tags as $tagItem)<span class="tag-chip" style="background:{{ $tagItem->color }}">{{ $tagItem->name }}</span>@endforeach
+                                    </span>
+                                @endif
                             </span>
                             <span class="list-meta"><strong><x-money-amount :value="$t->amount" signed /></strong></span>
                         </a>

@@ -6,7 +6,9 @@ use App\Models\MoneyAccount;
 use App\Models\MoneyGoal;
 use App\Models\MoneyPerson;
 use App\Models\MoneyPurchase;
+use App\Models\MoneyTransaction;
 use App\Support\Money;
+use Illuminate\Support\Carbon;
 
 /**
  * Alertes : un budget du mois atteint 80 % ou est dépassé, un compte passe sous
@@ -136,7 +138,7 @@ class MoneyAlertService
 
     public static function isReminder(string $key): bool
     {
-        return str_starts_with($key, 'warranty:') || str_starts_with($key, 'loan:');
+        return str_starts_with($key, 'warranty:') || str_starts_with($key, 'loan:') || str_starts_with($key, 'claims:') || str_starts_with($key, 'price:');
     }
 
     /**
@@ -180,6 +182,38 @@ class MoneyAlertService
                     : ($person->due_on->isToday() ? ' doit vous rembourser aujourd\'hui.' : ' doit vous rembourser d\'ici le '.$person->due_on->format('d/m/Y').'.')),
                 'details' => 'Reste '.Money::plain($balance).'.',
                 'url' => route('loans.show', $person),
+            ];
+        }
+
+        // Notes de frais qui attendent depuis plus d'un mois : un rappel par mois.
+        $claims = MoneyTransaction::query()->where('claim', 'a_rembourser')->get(['occurred_on', 'amount']);
+        $oldest = $claims->min('occurred_on');
+        if ($oldest && $oldest->lte(today()->subDays(30))) {
+            $count = $claims->count();
+            $alerts[] = [
+                'key' => 'claims:'.today()->format('Y-m'),
+                'level' => 'warning',
+                'title' => 'Notes de frais',
+                'text' => $count.' note'.($count > 1 ? 's' : '').' de frais attend'.($count > 1 ? 'ent' : '').' d\'être remboursée'.($count > 1 ? 's' : '').' (la plus ancienne du '.$oldest->format('d/m/Y').').',
+                'details' => 'Total '.Money::plain((int) -$claims->sum('amount')).'.',
+                'url' => route('claims.index'),
+            ];
+        }
+
+        // Abonnement dont le prix a changé (repéré à l'import d'un relevé) : affiché un mois.
+        foreach ((array) $this->settings->get('subscriptions.price_changes', []) as $change) {
+            if (! isset($change['id'], $change['old'], $change['new'], $change['on']) || Carbon::parse($change['on'])->lt(today()->subDays(30))) {
+                continue;
+            }
+            $up = abs($change['new']) > abs($change['old']);
+            $alerts[] = [
+                'key' => 'price:'.$change['id'].':'.$change['on'],
+                'level' => 'warning',
+                'title' => $up ? 'Abonnement plus cher' : 'Abonnement moins cher',
+                // Montants dans « details » : jamais sur l'écran verrouillé sans le réglage.
+                'text' => '« '.$change['label'].' » change de prix ('.($up ? '+' : '−').abs(MoneyStatsService::change(abs($change['new']), abs($change['old'])) ?? 0).' %). Les Fixes sont à jour.',
+                'details' => Money::plain(abs($change['old'])).' → '.Money::plain(abs($change['new'])).' par prélèvement.',
+                'url' => route('recurrings.index'),
             ];
         }
 

@@ -48,7 +48,7 @@
             @endif
             <div class="money-actions" style="margin-top:.75rem">
                 <a class="btn btn-secondary btn-sm" href="{{ route('purchases.file', $purchase) }}" target="_blank" rel="noopener"><x-icon name="eye" /> Ouvrir</a>
-                <a class="btn btn-secondary btn-sm" href="{{ route('purchases.file', ['purchase' => $purchase, 'telecharger' => 1]) }}"><x-icon name="arrow-down" /> Télécharger</a>
+                <a class="btn btn-secondary btn-sm" href="{{ route('purchases.file', ['purchase' => $purchase, 'telecharger' => 1]) }}" data-share-file><x-icon name="arrow-down" /> Enregistrer / partager</a>
             </div>
         @endif
     </div>
@@ -70,5 +70,4 @@
             <button class="btn btn-sm btn-danger-outline" type="submit"><x-icon name="trash" /> Supprimer</button>
         </form>
     </details>
-    <script src="{{ asset('js/purchases.js') }}?v={{ filemtime(public_path('js/purchases.js')) }}" defer></script>
 @endsection

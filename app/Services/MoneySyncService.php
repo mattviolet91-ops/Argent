@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\MoneyAccount;
+use App\Models\MoneyAttachment;
 use App\Models\MoneyCategory;
 use App\Models\MoneyRecurring;
 use App\Models\MoneyTransaction;
@@ -87,6 +88,7 @@ class MoneySyncService
             $gone = MoneyTransaction::query()->where('source', 'devis')->pluck('source_ref', 'id')
                 ->reject(fn ($ref) => isset($seen[$ref]))->keys();
             foreach ($gone->chunk(500) as $ids) {
+                MoneyAttachment::purgeFor($ids);
                 $result['removed'] += MoneyTransaction::query()->whereIn('id', $ids)->delete();
             }
         });

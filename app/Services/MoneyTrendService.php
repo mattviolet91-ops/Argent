@@ -74,6 +74,37 @@ class MoneyTrendService
     }
 
     /**
+     * Le même mois l'an dernier, aux mêmes jours (du 1er au même jour), catégorie par catégorie.
+     * null si rien n'était noté l'an dernier.
+     *
+     * @return array{month: Carbon, total: array{current: int, last: int, change: ?int}, categories: Collection<int, array<string, mixed>>}|null
+     */
+    public function yearAgo(string $scope = 'all', ?Carbon $today = null): ?array
+    {
+        $today = ($today ?? today())->copy()->startOfDay();
+        $start = $today->copy()->startOfMonth()->subYearNoOverflow();
+        $last = $this->sums($scope, $start, $start->copy()->addDays(min($today->day, $start->daysInMonth) - 1));
+        if ($last === []) {
+            return null;
+        }
+        $current = $this->sums($scope, $today->copy()->startOfMonth(), $today);
+        $ids = collect(array_keys($current + $last));
+        $categories = MoneyCategory::query()->whereIn('id', $ids->filter(fn ($id) => $id !== ''))->get()->keyBy('id');
+
+        return [
+            'month' => $start,
+            'total' => ['current' => (int) array_sum($current), 'last' => (int) array_sum($last), 'change' => MoneyStatsService::change((int) array_sum($current), (int) array_sum($last))],
+            'categories' => $ids->map(fn ($id) => [
+                'name' => $categories->get($id)?->name ?? 'Sans catégorie',
+                'color' => $categories->get($id)?->color ?? '#B0BEC5',
+                'current' => $current[$id] ?? 0,
+                'last' => $last[$id] ?? 0,
+                'change' => MoneyStatsService::change($current[$id] ?? 0, $last[$id] ?? 0),
+            ])->sortByDesc(fn ($row) => max($row['current'], $row['last']))->values(),
+        ];
+    }
+
+    /**
      * Les écarts qui méritent d'être signalés : les hausses d'abord (les plus grosses en euros).
      *
      * @return Collection<int, array<string, mixed>>

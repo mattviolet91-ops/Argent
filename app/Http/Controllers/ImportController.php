@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\ReadsMoneyInput;
 use App\Models\MoneyAccount;
 use App\Models\MoneyCategory;
+use App\Models\MoneyRecurring;
 use App\Models\MoneyTransaction;
 use App\Services\ActivityLogger;
 use App\Services\MoneyAlertService;
 use App\Services\MoneyImportService;
+use App\Services\Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -86,7 +88,8 @@ class ImportController extends Controller
         $categories = MoneyCategory::query()->pluck('type', 'id');
 
         $created = 0;
-        DB::transaction(function () use ($rows, $selected, $chosen, $categories, $account, &$created) {
+        $changes = [];
+        DB::transaction(function () use ($rows, $selected, $chosen, $categories, $account, &$created, &$changes) {
             foreach ($selected as $index) {
                 $row = $rows[$index] ?? null;
                 if (! $row || $row['status'] === 'known') {
@@ -106,7 +109,17 @@ class ImportController extends Controller
                     'label' => $row['label'],
                     'source' => 'import',
                     'import_hash' => $row['hash'],
+                    'recurring_id' => $row['status'] === 'price' ? $row['recurring_id'] : null,
                 ]);
+                // Abonnement à un autre prix : il remplace le prélèvement prévu, et la dépense fixe prend le nouveau prix.
+                if ($row['status'] === 'price') {
+                    MoneyTransaction::query()->whereKey($row['replaces'])->where('source', 'recurring')->first()?->delete();
+                    $recurring = MoneyRecurring::query()->find($row['recurring_id']);
+                    if ($recurring && $recurring->amount !== $row['amount']) {
+                        $changes[] = ['id' => $recurring->id, 'label' => $recurring->label, 'old' => $recurring->amount, 'new' => $row['amount'], 'on' => today()->toDateString()];
+                        $recurring->update(['amount' => $row['amount']]);
+                    }
+                }
                 if ($categoryId && $categoryId !== $row['category_id']) {
                     $this->importer->learn($row['label'], $categoryId);
                 }
@@ -114,11 +127,16 @@ class ImportController extends Controller
             }
         });
         $this->forget($request);
+        if ($changes !== []) {
+            $settings = app(Settings::class);
+            $settings->set(['subscriptions.price_changes' => array_slice([...(array) $settings->get('subscriptions.price_changes', []), ...$changes], -20)]);
+        }
         app(MoneyAlertService::class)->check();
         ActivityLogger::log('argent.import', 'Relevé importé dans l\'app Argent ('.$created.' opération(s))');
 
         return redirect()->route('transactions.index', ['compte' => $account->id, 'periode' => 'tout'])
-            ->with('status', $created.' opération'.($created > 1 ? 's importées' : ' importée').'.');
+            ->with('status', $created.' opération'.($created > 1 ? 's importées' : ' importée').'.'
+                .($changes ? ' Nouveau prix pour '.implode(', ', array_map(fn ($c) => '« '.$c['label'].' »', $changes)).' : les Fixes sont à jour.' : ''));
     }
 
     /** @return array{account_id: int, rows: list<array{date: string, label: string, amount: int, fitid: ?string}>}|null */

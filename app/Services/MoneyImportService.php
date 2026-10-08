@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\MoneyAccount;
+use App\Models\MoneyRecurring;
 use App\Models\MoneyRule;
 use App\Models\MoneyTransaction;
 use App\Support\Money;
@@ -48,7 +49,9 @@ class MoneyImportService
      * Prépare l'aperçu : doublons, ressemblances et catégories proposées.
      *
      * @param  list<array{date: string, label: string, amount: int, fitid: ?string}>  $rows
-     * @return list<array{date: string, label: string, amount: int, hash: string, status: string, category_id: ?int, similar: ?string}>
+     *                                                                                       Statut « price » : prélèvement d'une dépense fixe arrivé à un autre prix (abonnement
+     *                                                                                       plus cher…) ; il remplace le prélèvement prévu à l'ancien prix.
+     * @return list<array{date: string, label: string, amount: int, hash: string, status: string, category_id: ?int, similar: ?string, replaces?: int, recurring_id?: int, old_amount?: int}>
      */
     public function preview(MoneyAccount $account, array $rows): array
     {
@@ -61,11 +64,12 @@ class MoneyImportService
             $nearby = MoneyTransaction::query()->where('account_id', $account->id)->where('source', '!=', 'import')
                 ->whereDate('occurred_on', '>=', Carbon::parse(min($dates))->subDays(5))
                 ->whereDate('occurred_on', '<=', Carbon::parse(max($dates))->addDays(5))
-                ->get(['id', 'occurred_on', 'amount', 'label']);
+                ->get(['id', 'occurred_on', 'amount', 'label', 'source', 'recurring_id', 'category_id']);
         } else {
             $nearby = collect();
         }
         $used = [];
+        $recurringKeywords = $this->recurringKeywords($nearby->where('source', 'recurring')->pluck('recurring_id')->filter()->unique()->all());
 
         $preview = [];
         foreach ($rows as $i => $row) {
@@ -80,18 +84,67 @@ class MoneyImportService
                     $similar = $match->label.' ('.$match->occurred_on->format('d/m').')';
                 }
             }
+            $extra = [];
+            // Même commerçant qu'une dépense fixe prévue ces jours-là, mais à un autre prix.
+            if ($status === 'new' && $row['amount'] < 0 && ($keyword = $this->keyword($row['label']))) {
+                $planned = $nearby->first(fn (MoneyTransaction $t) => ! isset($used[$t->id]) && $t->source === 'recurring' && $t->amount < 0
+                    && $this->sameMerchant($keyword, $recurringKeywords[$t->recurring_id] ?? [])
+                    && abs($t->occurred_on->diffInDays(Carbon::parse($row['date']), false)) <= 6
+                    && $row['amount'] >= $t->amount * 2 && $row['amount'] <= $t->amount / 2);
+                if ($planned) {
+                    $used[$planned->id] = true;
+                    $status = 'price';
+                    $similar = '« '.$planned->label.' » était prévu à '.Money::format(-$planned->amount).' le '.$planned->occurred_on->format('d/m').' : nouveau prix, les Fixes seront mis à jour.';
+                    $extra = ['replaces' => $planned->id, 'recurring_id' => $planned->recurring_id, 'old_amount' => $planned->amount, 'planned_category' => $planned->category_id];
+                }
+            }
             $preview[] = [
                 'date' => $row['date'],
                 'label' => $row['label'],
                 'amount' => $row['amount'],
                 'hash' => $hashes[$i],
                 'status' => $status,
-                'category_id' => $this->guess($row['label'], $rules),
+                'category_id' => $this->guess($row['label'], $rules) ?? ($extra['planned_category'] ?? null),
                 'similar' => $similar,
-            ];
+            ] + $extra;
         }
 
         return $preview;
+    }
+
+    /**
+     * Mots-clés de chaque dépense fixe : son nom, et les commerçants de ses prélèvements déjà importés.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, list<string>>
+     */
+    private function recurringKeywords(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $map = [];
+        foreach (MoneyRecurring::query()->whereIn('id', $ids)->get(['id', 'label']) as $recurring) {
+            $map[$recurring->id] = array_filter([$this->keyword($recurring->label)]);
+        }
+        foreach (MoneyTransaction::query()->whereIn('recurring_id', $ids)->where('source', 'import')->latest('occurred_on')->limit(200)->get(['recurring_id', 'label']) as $t) {
+            $map[$t->recurring_id][] = $this->keyword($t->label);
+        }
+
+        return array_map(fn ($words) => array_values(array_unique(array_filter($words))), $map);
+    }
+
+    /** « netflix com » et « netflix » : même commerçant (même mot-clé, ou même premier mot). */
+    private function sameMerchant(string $keyword, array $known): bool
+    {
+        $first = explode(' ', $keyword)[0];
+        foreach ($known as $candidate) {
+            if ($candidate === $keyword || (strlen($first) >= 3 && explode(' ', $candidate)[0] === $first)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Retient « mot du libellé → catégorie » pour les prochains imports. */

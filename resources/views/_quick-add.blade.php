@@ -1,7 +1,7 @@
 {{-- Ajout rapide : dépense, revenu ou virement entre comptes. Besoin de $accountOptions, $categoryOptions. --}}
 @php
     $defaultAccount = old('account_id', $defaultAccount ?? $accountOptions->firstWhere('scope', ($scope ?? 'all') === 'pro' ? 'pro' : 'perso')?->id ?? $accountOptions->first()?->id);
-    $hasErrors = $errors->hasAny(['type', 'amount', 'account_id', 'to_account_id', 'category_id', 'label', 'occurred_on', 'notes']);
+    $hasErrors = $errors->hasAny(['type', 'amount', 'account_id', 'to_account_id', 'category_id', 'label', 'occurred_on', 'notes', 'tags', 'attachment']);
 @endphp
 <dialog class="sheet sheet-tall" id="money-add" aria-labelledby="money-add-title" @if ($hasErrors) data-open-on-load @endif>
     <div class="card-head">
@@ -12,7 +12,7 @@
         <p class="muted">Ajoutez d'abord un compte.</p>
         <a class="btn" href="{{ route('accounts.index') }}">Ajouter un compte</a>
     @else
-        <form method="POST" action="{{ route('transactions.store') }}" data-money-switch="type">
+        <form method="POST" action="{{ route('transactions.store') }}" enctype="multipart/form-data" data-money-switch="type">
             @csrf
             <div class="type-switch" role="radiogroup" aria-label="Type de mouvement">
                 @foreach (['expense' => 'Dépense', 'income' => 'Revenu', 'transfer' => 'Virement'] as $key => $label)
@@ -57,6 +57,18 @@
                 <x-field name="label" label="Libellé" placeholder="ex. Courses Leclerc, loyer…" maxlength="160" />
                 <x-field name="occurred_on" label="Date" type="date" :value="today()->toDateString()" required />
                 <x-field name="notes" label="Note" placeholder="facultatif" maxlength="500" />
+                <div class="field @error('tags') has-error @enderror">
+                    <label for="add-tags">Chantier / projet <span class="muted small">(facultatif)</span></label>
+                    <input id="add-tags" type="text" name="tags" value="{{ old('tags') }}" list="add-tag-list" maxlength="300" autocomplete="off" placeholder="ex. Dupont, Salle de bain">
+                    <datalist id="add-tag-list">@foreach ($tagNames ?? [] as $tagName)<option value="{{ $tagName }}"></option>@endforeach</datalist>
+                    @error('tags')<span class="error">{{ $message }}</span>@enderror
+                </div>
+                <div class="field @error('attachment') has-error @enderror">
+                    <label for="add-attachment">Photo du ticket <span class="muted small">(facultatif)</span></label>
+                    <input id="add-attachment" type="file" name="attachment" accept="image/*,application/pdf" data-shrink-image>
+                    @error('attachment')<span class="error">{{ $message }}</span>@enderror
+                </div>
+                <label class="check span-2" data-when="expense"><input type="checkbox" name="claim" value="1" @checked(old('claim'))> <span>Note de frais : dépense pro payée avec un compte perso, à me faire rembourser</span></label>
             </div>
             <div class="form-actions"><button class="btn btn-block" type="submit"><x-icon name="check" /> Enregistrer</button></div>
         </form>

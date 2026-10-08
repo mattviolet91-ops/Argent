@@ -6,14 +6,12 @@ use App\Http\Controllers\Concerns\ReadsMoneyInput;
 use App\Models\MoneyPurchase;
 use App\Models\MoneyTransaction;
 use App\Services\MoneyAlertService;
+use App\Services\PrivateFiles;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -28,11 +26,7 @@ class PurchaseController extends Controller
 
     private const FOLDER = 'argent-factures';
 
-    /** Types de fichiers acceptés (lus d'après le contenu du fichier, pas son nom). */
-    private const MIMES = [
-        'application/pdf' => 'pdf', 'image/jpeg' => 'jpg', 'image/png' => 'png',
-        'image/webp' => 'webp', 'image/heic' => 'heic', 'image/heif' => 'heif',
-    ];
+    public function __construct(private readonly PrivateFiles $files) {}
 
     public function index(Request $request): View
     {
@@ -71,9 +65,9 @@ class PurchaseController extends Controller
         if ($request->hasFile('file')) {
             $old = $purchase->file_path;
             $this->attach($purchase, $request->file('file'));
-            $old && Storage::disk('local')->delete($old);
+            $this->files->delete($old);
         } elseif ($request->boolean('remove_file') && $purchase->file_path) {
-            Storage::disk('local')->delete($purchase->file_path);
+            $this->files->delete($purchase->file_path);
             $purchase->fill(['file_path' => null, 'file_name' => null, 'file_mime' => null, 'file_size' => null]);
         }
         $purchase->save();
@@ -84,7 +78,7 @@ class PurchaseController extends Controller
 
     public function destroy(MoneyPurchase $purchase): RedirectResponse
     {
-        $purchase->file_path && Storage::disk('local')->delete($purchase->file_path);
+        $this->files->delete($purchase->file_path);
         $purchase->delete();
 
         return redirect()->route('purchases.index')->with('status', 'Achat et facture supprimés.');
@@ -93,16 +87,9 @@ class PurchaseController extends Controller
     /** La facture : affichée dans le navigateur, ou téléchargée (?telecharger=1). */
     public function file(Request $request, MoneyPurchase $purchase): StreamedResponse
     {
-        abort_unless($purchase->file_path && isset(self::MIMES[$purchase->file_mime]) && Storage::disk('local')->exists($purchase->file_path), 404);
-        $name = Str::slug(pathinfo((string) $purchase->file_name, PATHINFO_FILENAME) ?: $purchase->name).'.'.self::MIMES[$purchase->file_mime];
+        abort_unless($this->files->exists($purchase->file_path, $purchase->file_mime), 404);
 
-        return Storage::disk('local')->response($purchase->file_path, $name, [
-            'Content-Type' => $purchase->file_mime,
-            'Cache-Control' => 'private, no-store',
-            'X-Content-Type-Options' => 'nosniff',
-            // Rien d'actif dans le fichier ; le lecteur PDF du navigateur reste permis.
-            'Content-Security-Policy' => "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; object-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
-        ], $request->boolean('telecharger') ? 'attachment' : 'inline');
+        return $this->files->response($purchase->file_path, $purchase->file_mime, $purchase->file_name ?: $purchase->name, $request->boolean('telecharger'));
     }
 
     /** @return array<string, mixed> */
@@ -116,11 +103,8 @@ class PurchaseController extends Controller
             'warranty_until' => ['nullable', 'required_if:warranty,date', 'date', 'after_or_equal:purchased_on'],
             'details' => ['nullable', 'string', 'max:500'],
             'transaction_id' => ['nullable', 'integer', Rule::exists('money_transactions', 'id')],
-            'file' => ['nullable', 'file', 'max:10240', 'mimetypes:'.implode(',', array_keys(self::MIMES))],
-        ], [
-            'file.mimetypes' => 'La facture doit être une photo (JPG, PNG, HEIC) ou un PDF.',
-            'file.max' => 'Fichier trop lourd (10 Mo maximum).',
-            'file.uploaded' => 'Le fichier n\'a pas pu être envoyé (trop lourd ?). Essayez une photo plus légère ou un PDF.',
+            'file' => ['nullable', ...PrivateFiles::rules()],
+        ], PrivateFiles::messages('file') + [
             'purchased_on.before_or_equal' => 'La date d\'achat ne peut pas être dans le futur.',
             'warranty_until.required_if' => 'Indiquez la date de fin de garantie.',
             'warranty_until.after_or_equal' => 'La fin de garantie doit être après la date d\'achat.',
@@ -146,19 +130,10 @@ class PurchaseController extends Controller
 
     private function attach(MoneyPurchase $purchase, UploadedFile $file): void
     {
-        $mime = (string) $file->getMimeType();
-        if (! isset(self::MIMES[$mime])) {
-            throw ValidationException::withMessages(['file' => 'La facture doit être une photo (JPG, PNG, HEIC) ou un PDF.']);
-        }
-        $path = $file->storeAs(self::FOLDER, Str::random(40).'.'.self::MIMES[$mime], 'local');
-        if (! $path) {
-            throw ValidationException::withMessages(['file' => 'Le fichier n\'a pas pu être enregistré. Réessayez.']);
-        }
+        $stored = $this->files->store($file, self::FOLDER);
         $purchase->fill([
-            'file_path' => $path,
-            'file_name' => mb_substr($file->getClientOriginalName() ?: 'facture', 0, 160),
-            'file_mime' => $mime,
-            'file_size' => $file->getSize(),
+            'file_path' => $stored['path'], 'file_name' => $stored['name'],
+            'file_mime' => $stored['mime'], 'file_size' => $stored['size'],
         ]);
     }
 }

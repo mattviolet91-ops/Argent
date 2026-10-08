@@ -6,8 +6,10 @@ use App\Http\Controllers\Concerns\ReadsMoneyInput;
 use App\Http\Controllers\Concerns\ResolvesPeriod;
 use App\Models\MoneyAccount;
 use App\Models\MoneyCategory;
+use App\Models\MoneyTag;
 use App\Models\MoneyTransaction;
 use App\Services\MoneyAlertService;
+use App\Services\PrivateFiles;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,12 +38,15 @@ class TransactionController extends Controller
         $category = (string) $request->query('categorie', '');
         $type = (string) $request->query('type', '');
         $search = trim((string) $request->query('q', '')) ?: null;
+        $tag = $request->integer('projet') ?: null;
 
         $query = MoneyTransaction::query()->inScope($scope)->betweenDates($from, $to)
             ->when($account, fn (Builder $q) => $q->where('account_id', $account))
             ->when($category === 'aucune', fn (Builder $q) => $q->whereNull('category_id')->real())
             ->when(ctype_digit($category), fn (Builder $q) => $q->where('category_id', (int) $category))
             ->when(isset(self::TYPES[$type]), fn (Builder $q) => $q->where('kind', $type))
+            ->when($type === 'note-de-frais', fn (Builder $q) => $q->whereNotNull('claim'))
+            ->when($tag, fn (Builder $q) => $q->whereHas('tags', fn (Builder $t) => $t->whereKey($tag)))
             ->when($search, fn (Builder $q) => $q->where(fn (Builder $w) => $w->where('label', 'like', '%'.$search.'%')->orWhere('notes', 'like', '%'.$search.'%')));
 
         $sums = (clone $query)->real()
@@ -54,8 +59,9 @@ class TransactionController extends Controller
             'period' => $period,
             'from' => $from,
             'to' => $to,
-            'filters' => ['compte' => $account, 'categorie' => $category, 'type' => $type, 'q' => $search],
-            'transactions' => $query->with(['account', 'category'])->latest('occurred_on')->latest('id')->paginate(60)->withQueryString(),
+            'filters' => ['compte' => $account, 'categorie' => $category, 'type' => $type, 'q' => $search, 'projet' => $tag],
+            'tagOptions' => MoneyTag::query()->orderBy('name')->get(),
+            'transactions' => $query->with(['account', 'category', 'tags'])->withCount('attachments')->latest('occurred_on')->latest('id')->paginate(60)->withQueryString(),
             'income' => (int) $sums->income,
             'expense' => (int) $sums->expense,
             'accountOptions' => $this->accountOptions(),
@@ -74,41 +80,52 @@ class TransactionController extends Controller
             'label' => ['nullable', 'string', 'max:160'],
             'notes' => ['nullable', 'string', 'max:500'],
             'occurred_on' => ['required', 'date'],
+            'tags' => ['nullable', 'string', 'max:300'],
+            'attachment' => ['nullable', ...PrivateFiles::rules()],
         ], [
             'to_account_id.required_if' => 'Choisissez le compte qui reçoit l\'argent.',
             'to_account_id.different' => 'Choisissez deux comptes différents.',
-        ], ['account_id' => 'compte', 'occurred_on' => 'date', 'label' => 'libellé']);
+        ] + PrivateFiles::messages('attachment'), ['account_id' => 'compte', 'occurred_on' => 'date', 'label' => 'libellé', 'tags' => 'chantier / projet']);
         $amount = $this->amount($request, 'amount');
 
         if ($data['type'] === 'transfer') {
-            $this->transfer($data, $amount);
-            app(MoneyAlertService::class)->check();
-
-            return back()->with('status', 'Virement enregistré.');
+            $transaction = $this->transfer($data, $amount);
+            $message = 'Virement enregistré.';
+        } else {
+            $category = $this->category($data['category_id'] ?? null, $data['type']);
+            $signed = $data['type'] === 'expense' ? -$amount : $amount;
+            $claim = $data['type'] === 'expense' && $request->boolean('claim');
+            $transaction = MoneyTransaction::query()->create([
+                'account_id' => $data['account_id'],
+                'occurred_on' => $data['occurred_on'],
+                'amount' => $signed,
+                'kind' => MoneyTransaction::kindFor($signed),
+                'category_id' => $category?->id,
+                'label' => trim((string) ($data['label'] ?? '')) ?: ($category?->name ?? self::TYPES[$data['type']]),
+                'notes' => $data['notes'] ?? null,
+                'source' => 'manual',
+                // Note de frais : dépense pro payée avec un compte perso, à se faire rembourser.
+                'claim' => $claim ? 'a_rembourser' : null,
+                'scope' => $claim ? 'pro' : null,
+            ]);
+            $message = $claim ? 'Note de frais ajoutée : à vous faire rembourser.' : ($data['type'] === 'expense' ? 'Dépense ajoutée.' : 'Revenu ajouté.');
         }
-
-        $category = $this->category($data['category_id'] ?? null, $data['type']);
-        $signed = $data['type'] === 'expense' ? -$amount : $amount;
-        MoneyTransaction::query()->create([
-            'account_id' => $data['account_id'],
-            'occurred_on' => $data['occurred_on'],
-            'amount' => $signed,
-            'kind' => MoneyTransaction::kindFor($signed),
-            'category_id' => $category?->id,
-            'label' => trim((string) ($data['label'] ?? '')) ?: ($category?->name ?? self::TYPES[$data['type']]),
-            'notes' => $data['notes'] ?? null,
-            'source' => 'manual',
-        ]);
+        $transaction->tags()->sync(MoneyTag::idsFromInput($data['tags'] ?? null));
+        if ($request->hasFile('attachment')) {
+            AttachmentController::attach($transaction, $request->file('attachment'), app(PrivateFiles::class));
+            $message .= ' Justificatif joint.';
+        }
 
         app(MoneyAlertService::class)->check();
 
-        return back()->with('status', $data['type'] === 'expense' ? 'Dépense ajoutée.' : 'Revenu ajouté.');
+        return back()->with('status', $message);
     }
 
     public function edit(MoneyTransaction $transaction): View
     {
         return view('transactions.edit', [
-            'transaction' => $transaction->load(['account', 'category']),
+            'transaction' => $transaction->load(['account', 'category', 'tags', 'attachments']),
+            'tagNames' => MoneyTag::query()->whereNull('archived_at')->orderBy('name')->pluck('name'),
             'peer' => $this->peer($transaction),
             'accountOptions' => MoneyAccount::query()->ordered()->get(),
             'categoryOptions' => $this->categoryOptions(),
@@ -123,7 +140,10 @@ class TransactionController extends Controller
             'notes' => ['nullable', 'string', 'max:500'],
             'account_id' => ['sometimes', 'integer', Rule::exists('money_accounts', 'id')],
             'occurred_on' => ['sometimes', 'date'],
-        ], [], ['label' => 'libellé']);
+            'tags' => ['nullable', 'string', 'max:300'],
+        ], [], ['label' => 'libellé', 'tags' => 'chantier / projet']);
+        // Étiquettes de chantier ou de projet : sur tous les mouvements, même venus des devis.
+        $transaction->tags()->sync(MoneyTag::idsFromInput($data['tags'] ?? null));
 
         // Paiement ou frais de l'app de devis : seuls la catégorie, le libellé et la note se changent ici.
         if ($transaction->source === 'devis') {
@@ -162,6 +182,12 @@ class TransactionController extends Controller
         $type = $request->input('type') === 'income' ? 'income' : 'expense';
         $signed = $type === 'expense' ? -$amount : $amount;
         $category = $this->category($data['category_id'] ?? null, $type);
+        $claim = $type === 'expense' && $request->boolean('claim');
+        if ($claim && ! $transaction->isClaim()) {
+            $transaction->fill(['claim' => 'a_rembourser', 'scope' => 'pro']);
+        } elseif (! $claim && $transaction->isClaim()) {
+            $transaction->fill(['claim' => null, 'scope' => null, 'claim_settled_on' => null, 'claim_key' => null]);
+        }
         $transaction->update([
             'account_id' => $data['account_id'] ?? $transaction->account_id,
             'occurred_on' => $data['occurred_on'] ?? $transaction->occurred_on,
@@ -192,17 +218,22 @@ class TransactionController extends Controller
         return redirect()->route('transactions.index')->with('status', 'Mouvement supprimé.');
     }
 
-    /** @param  array<string, mixed>  $data */
-    private function transfer(array $data, int $amount): void
+    /**
+     * Virement : deux lignes liées. Retourne la ligne du compte de départ.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function transfer(array $data, int $amount): MoneyTransaction
     {
         $from = MoneyAccount::query()->findOrFail($data['account_id']);
         $to = MoneyAccount::query()->findOrFail($data['to_account_id']);
         $key = (string) Str::uuid();
         $label = trim((string) ($data['label'] ?? ''));
 
-        DB::transaction(function () use ($from, $to, $key, $label, $amount, $data) {
+        return DB::transaction(function () use ($from, $to, $key, $label, $amount, $data) {
+            $rows = [];
             foreach ([[$from, -$amount, 'Virement vers '.$to->name], [$to, $amount, 'Virement depuis '.$from->name]] as [$account, $value, $default]) {
-                MoneyTransaction::query()->create([
+                $rows[] = MoneyTransaction::query()->create([
                     'account_id' => $account->id,
                     'occurred_on' => $data['occurred_on'],
                     'amount' => $value,
@@ -213,6 +244,8 @@ class TransactionController extends Controller
                     'source' => 'manual',
                 ]);
             }
+
+            return $rows[0];
         });
     }
 

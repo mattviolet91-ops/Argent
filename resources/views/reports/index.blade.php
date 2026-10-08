@@ -30,7 +30,7 @@
         @include('_bars', ['series' => $months])
         <div class="table-wrap" style="margin-top:1rem">
             <table class="table">
-                <thead><tr><th>Mois</th><th class="num">Gagné</th><th class="num">Dépensé</th><th class="num">Résultat</th><th class="num">Gardé</th></tr></thead>
+                <thead><tr><th>Mois</th><th class="num">Gagné</th><th class="num">Dépensé</th><th class="num">Résultat</th><th class="num">Gardé</th>@if ($before->isNotEmpty())<th class="num">Dépensé vs {{ $year - 1 }}</th>@endif<th><span class="visually-hidden">PDF</span></th></tr></thead>
                 <tbody>
                     @foreach (array_reverse($months) as $m)
                         <tr>
@@ -39,6 +39,11 @@
                             <td class="num"><x-money-amount :value="$m['expense']" /></td>
                             <td class="num"><x-money-amount :value="$m['net']" signed /></td>
                             <td class="num muted">{{ $m['income'] > 0 ? (int) round($m['net'] * 100 / $m['income']).' %' : '—' }}</td>
+                            @if ($before->isNotEmpty())
+                                @php $old = $before->get($m['month']->month); $yoy = $old ? MoneyStatsService::change($m['expense'], $old['expense']) : null; @endphp
+                                <td class="num {{ $yoy === null ? 'muted' : ($yoy > 0 ? 'm-neg' : 'm-pos') }}" title="{{ $old ? \App\Support\Money::plain($old['expense']).' en '.($year - 1) : '' }}">{{ $yoy === null ? '—' : ($yoy > 0 ? '+' : '').$yoy.' %' }}</td>
+                            @endif
+                            <td><a class="small" href="{{ route('reports.pdf', ['mois' => $m['month']->format('Y-m'), 'vue' => $scope]) }}" target="_blank" data-share-file title="Bilan PDF de {{ $m['month']->locale('fr')->isoFormat('MMMM') }}">PDF</a></td>
                         </tr>
                     @endforeach
                 </tbody>
@@ -61,6 +66,32 @@
             </ul>
         </div>
     @endif
+
+    <form method="GET" action="{{ route('reports.pdf') }}" class="card" target="_blank" data-share-file>
+        <h2>Bilan d'un mois en PDF</h2>
+        <p class="small muted" style="margin-top:0">À garder, ou à envoyer au comptable : gagné, dépensé, catégories, budgets, chantiers, notes de frais, comptes en fin de mois.</p>
+        <div class="form-grid cols-2">
+            <div class="field">
+                <label for="pdf-mois">Mois</label>
+                <select id="pdf-mois" name="mois">
+                    @for ($i = 0; $i < 24; $i++)
+                        @php $option = today()->startOfMonth()->subMonthsNoOverflow($i); @endphp
+                        <option value="{{ $option->format('Y-m') }}" @selected($i === (today()->day <= 10 ? 1 : 0))>{{ ucfirst($option->locale('fr')->isoFormat('MMMM YYYY')) }}</option>
+                    @endfor
+                </select>
+            </div>
+            <div class="field">
+                <label for="pdf-vue">Comptes</label>
+                <select id="pdf-vue" name="vue">
+                    @foreach (\App\Services\MoneyStatsService::SCOPES as $key => $label)
+                        <option value="{{ $key }}" @selected($scope === $key)>{{ $label }}</option>
+                    @endforeach
+                </select>
+            </div>
+        </div>
+        <label class="check" style="margin-top:.75rem"><input type="checkbox" name="detail" value="1"> <span>Avec la liste de tous les mouvements du mois</span></label>
+        <div class="form-actions"><button class="btn" type="submit"><x-icon name="file" /> Bilan PDF</button></div>
+    </form>
 
     <div class="card">
         <div class="card-head"><h2>Bilans de chaque semaine</h2><span class="small muted">faits chaque lundi matin</span></div>

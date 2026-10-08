@@ -83,12 +83,37 @@ Route::middleware('auth')->group(function () {
         Route::post('/prets/{person}/lignes', [Controllers\LoanController::class, 'entry'])->whereNumber('person')->name('loans.entry');
         Route::delete('/prets/lignes/{entry}', [Controllers\LoanController::class, 'destroyEntry'])->whereNumber('entry')->name('loans.entry.destroy');
 
+        Route::post('/mouvements/{transaction}/justificatifs', [Controllers\AttachmentController::class, 'store'])->whereNumber('transaction')->middleware('throttle:30,1')->name('attachments.store');
+        Route::get('/justificatifs/{attachment}', [Controllers\AttachmentController::class, 'show'])->whereNumber('attachment')->name('attachments.show');
+        Route::delete('/justificatifs/{attachment}', [Controllers\AttachmentController::class, 'destroy'])->whereNumber('attachment')->name('attachments.destroy');
+
+        Route::get('/projets', [Controllers\TagController::class, 'index'])->name('tags.index');
+        Route::post('/projets', [Controllers\TagController::class, 'store'])->name('tags.store');
+        Route::get('/projets/{tag}', [Controllers\TagController::class, 'show'])->whereNumber('tag')->name('tags.show');
+        Route::put('/projets/{tag}', [Controllers\TagController::class, 'update'])->whereNumber('tag')->name('tags.update');
+        Route::delete('/projets/{tag}', [Controllers\TagController::class, 'destroy'])->whereNumber('tag')->name('tags.destroy');
+
+        Route::get('/notes-de-frais', [Controllers\ClaimController::class, 'index'])->name('claims.index');
+        Route::post('/notes-de-frais/remboursement', [Controllers\ClaimController::class, 'settle'])->name('claims.settle');
+        Route::post('/notes-de-frais/{transaction}/a-rembourser', [Controllers\ClaimController::class, 'reopen'])->whereNumber('transaction')->name('claims.reopen');
+
+        Route::get('/puis-je', Controllers\AffordController::class)->name('afford');
+        Route::get('/patrimoine', Controllers\WealthController::class)->name('wealth');
+
+        Route::get('/credits', [Controllers\CreditController::class, 'index'])->name('credits.index');
+        Route::post('/credits', [Controllers\CreditController::class, 'store'])->name('credits.store');
+        Route::get('/credits/{credit}', [Controllers\CreditController::class, 'show'])->whereNumber('credit')->name('credits.show');
+        Route::put('/credits/{credit}', [Controllers\CreditController::class, 'update'])->whereNumber('credit')->name('credits.update');
+        Route::delete('/credits/{credit}', [Controllers\CreditController::class, 'destroy'])->whereNumber('credit')->name('credits.destroy');
+        Route::post('/credits/{credit}/fixes', [Controllers\CreditController::class, 'recurring'])->whereNumber('credit')->name('credits.recurring');
+
         Route::get('/releve', [Controllers\ImportController::class, 'create'])->name('import.create');
         Route::post('/releve/apercu', [Controllers\ImportController::class, 'preview'])->middleware('throttle:20,1')->name('import.preview');
         Route::get('/releve/apercu', [Controllers\ImportController::class, 'show'])->name('import.show');
         Route::post('/releve', [Controllers\ImportController::class, 'store'])->name('import.store');
 
         Route::get('/bilans', [Controllers\ReportController::class, 'index'])->name('reports.index');
+        Route::get('/bilans/pdf', [Controllers\ReportController::class, 'pdf'])->middleware('throttle:20,1')->name('reports.pdf');
         Route::get('/bilans/{report}', [Controllers\ReportController::class, 'show'])->whereNumber('report')->name('reports.show');
 
         Route::get('/reglages', [Controllers\SettingsController::class, 'edit'])->name('settings');

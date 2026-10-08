@@ -2,22 +2,8 @@
 
 {{-- Gabarit des pages de l'app (après connexion et code Argent). --}}
 @php
-    $nav = [
-        ['dashboard', 'Résumé', 'home', 'dashboard'],
-        ['transactions.index', 'Mouvements', 'wallet', 'transactions.*'],
-        ['accounts.index', 'Comptes', 'piggy', 'accounts.*'],
-        ['categories.index', 'Budgets', 'chart', 'categories.*'],
-        ['goals.index', 'Objectifs', 'target', 'goals.*'],
-        ['recurrings.index', 'Fixes', 'repeat', 'recurrings.*'],
-        ['calendar', 'Calendrier', 'calendar', 'calendar'],
-        ['trends', 'Tendances', 'trend', 'trends'],
-        ['purchases.index', 'Garanties', 'shield', 'purchases.*'],
-        ['loans.index', 'Qui me doit quoi', 'users', 'loans.*'],
-        ['reports.index', 'Bilans', 'book', 'reports.*'],
-        ['import.create', 'Importer un relevé', 'upload', 'import.*'],
-        ['settings', 'Réglages', 'settings', 'settings'],
-    ];
-    $unlocked = request()->routeIs(...array_column($nav, 3));
+    $sections = \App\Support\Nav::sections();
+    $unlocked = request()->routeIs(...\App\Support\Nav::patterns());
 @endphp
 
 @section('body')
@@ -46,8 +32,11 @@
         @if ($unlocked)
             <nav class="sidebar" aria-label="Navigation principale">
                 <button class="btn" type="button" data-open-sheet="money-add"><x-icon name="plus" /> Ajouter</button>
-                @foreach ($nav as [$route, $label, $icon, $pattern])
-                    <a class="nav-link {{ request()->routeIs($pattern) ? 'is-active' : '' }}" href="{{ route($route) }}" @if (request()->routeIs($pattern)) aria-current="page" @endif><x-icon :name="$icon" /> {{ $label }}</a>
+                @foreach ($sections as $section => $items)
+                    <span class="nav-section">{{ $section }}</span>
+                    @foreach ($items as [$route, $label, $icon, $pattern])
+                        <a class="nav-link {{ request()->routeIs($pattern) ? 'is-active' : '' }}" href="{{ route($route) }}" @if (request()->routeIs($pattern)) aria-current="page" @endif><x-icon :name="$icon" /> {{ $label }}</a>
+                    @endforeach
                 @endforeach
                 <span class="nav-sep"></span>
                 <form method="POST" action="{{ route('lock') }}">@csrf<button class="nav-link" type="submit"><x-icon name="lock" /> Verrouiller</button></form>
@@ -74,7 +63,7 @@
             <a href="{{ route('transactions.index') }}" class="{{ request()->routeIs('transactions.*') ? 'is-active' : '' }}"><x-icon name="wallet" /> Mouvements</a>
             <button type="button" class="fab" data-open-sheet="money-add"><span class="fab-circle"><x-icon name="plus" /></span> Ajouter</button>
             <a href="{{ route('goals.index') }}" class="{{ request()->routeIs('goals.*') ? 'is-active' : '' }}"><x-icon name="target" /> Objectifs</a>
-            <button type="button" data-open-sheet="sheet-more" class="{{ request()->routeIs('accounts.*', 'categories.*', 'recurrings.*', 'calendar', 'trends', 'purchases.*', 'loans.*', 'reports.*', 'import.*', 'settings') ? 'is-active' : '' }}"><x-icon name="menu" /> Plus</button>
+            <button type="button" data-open-sheet="sheet-more" class="{{ request()->routeIs(...\App\Support\Nav::morePatterns()) ? 'is-active' : '' }}"><x-icon name="menu" /> Plus</button>
         </nav>
 
         <dialog class="sheet" id="sheet-more" aria-labelledby="sheet-more-title">
@@ -82,19 +71,24 @@
                 <h2 id="sheet-more-title">Menu</h2>
                 <button class="icon-btn" type="button" data-close-sheet><x-icon name="x" /><span class="visually-hidden">Fermer</span></button>
             </div>
-            <div class="sheet-grid">
-                @foreach (array_slice($nav, 2) as [$route, $label, $icon])
-                    <a class="sheet-item" href="{{ route($route) }}"><x-icon :name="$icon" /> {{ $label }}</a>
-                @endforeach
-            </div>
+            @foreach ($sections as $section => $items)
+                <h3 class="sheet-section">{{ $section }}</h3>
+                <div class="sheet-grid sheet-grid-3">
+                    @foreach ($items as [$route, $label, $icon, $pattern])
+                        <a class="sheet-item {{ request()->routeIs($pattern) ? 'is-active' : '' }}" href="{{ route($route) }}"><x-icon :name="$icon" /> {{ $label }}</a>
+                    @endforeach
+                </div>
+            @endforeach
             <div class="sheet-footer">
                 <form method="POST" action="{{ route('lock') }}">@csrf<button class="btn btn-secondary" type="submit"><x-icon name="lock" /> Verrouiller</button></form>
                 <form method="POST" action="{{ route('logout') }}">@csrf<button class="btn btn-secondary" type="submit"><x-icon name="logout" /> Se déconnecter</button></form>
             </div>
         </dialog>
 
-        @include('_quick-add', ['accountOptions' => $quickAccounts, 'categoryOptions' => $quickCategories, 'scope' => session('argent.scope', 'all'), 'defaultAccount' => request()->integer('compte') ?: null])
+        @include('_quick-add', ['accountOptions' => $quickAccounts, 'categoryOptions' => $quickCategories, 'tagNames' => $quickTags, 'scope' => session('argent.scope', 'all'), 'defaultAccount' => request()->integer('compte') ?: null])
         <script src="{{ asset('js/money.js') }}?v={{ filemtime(public_path('js/money.js')) }}" defer></script>
+        <script src="{{ asset('js/files.js') }}?v={{ filemtime(public_path('js/files.js')) }}" defer></script>
+        <script src="{{ asset('js/charts.js') }}?v={{ filemtime(public_path('js/charts.js')) }}" defer></script>
     @endif
 </div>
 @endsection

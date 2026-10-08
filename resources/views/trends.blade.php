@@ -76,4 +76,29 @@
             <p class="cal-legend small muted"><span class="cal-key is-now"></span> ce mois-ci <span class="cal-key is-usual"></span> d'habitude à cette date</p>
         @endif
     </div>
+
+    @if ($yearAgo)
+        @php $lastMonth = $yearAgo['month']->locale('fr')->isoFormat('MMMM YYYY'); @endphp
+        <div class="card">
+            <div class="card-head"><h2>Comparé à {{ $lastMonth }}</h2><span class="small muted">du 1er au {{ $day }}</span></div>
+            <p style="margin-top:0">Dépensé : <strong class="m-amt">{{ \App\Support\Money::format($yearAgo['total']['current']) }}</strong> cette année contre <span class="m-amt">{{ \App\Support\Money::format($yearAgo['total']['last']) }}</span> en {{ $lastMonth }}
+                @if ($yearAgo['total']['change'] !== null)<span class="badge {{ $yearAgo['total']['change'] > 0 ? 'badge-danger' : 'badge-success' }}">{{ $yearAgo['total']['change'] > 0 ? '+' : '' }}{{ $yearAgo['total']['change'] }} %</span>@endif
+            </p>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>Catégorie</th><th class="num">{{ today()->year }}</th><th class="num">{{ today()->year - 1 }}</th><th class="num">Écart</th></tr></thead>
+                    <tbody>
+                        @foreach ($yearAgo['categories']->take(12) as $row)
+                            <tr>
+                                <td><span class="swatch-dot" style="background:{{ $row['color'] }}"></span>{{ $row['name'] }}</td>
+                                <td class="num"><x-money-amount :value="$row['current']" /></td>
+                                <td class="num"><x-money-amount :value="$row['last']" /></td>
+                                <td class="num">{{ $row['change'] === null ? '—' : ($row['change'] > 0 ? '+' : '').$row['change'].' %' }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
 @endsection

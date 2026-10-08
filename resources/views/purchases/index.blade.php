@@ -59,5 +59,4 @@
             </ul>
         </details>
     @endif
-    <script src="{{ asset('js/purchases.js') }}?v={{ filemtime(public_path('js/purchases.js')) }}" defer></script>
 @endsection

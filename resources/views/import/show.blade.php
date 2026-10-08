@@ -1,8 +1,8 @@
 @extends('layouts.app', ['title' => 'Aperçu du relevé'])
 
 @php
-    $statusLabels = ['new' => null, 'known' => 'Déjà importée', 'similar' => 'Déjà notée ?'];
-    $selected = collect($rows)->where('status', 'new');
+    $statusLabels = ['new' => null, 'known' => 'Déjà importée', 'similar' => 'Déjà notée ?', 'price' => 'Nouveau prix'];
+    $selected = collect($rows)->whereIn('status', ['new', 'price']);
 @endphp
 
 @section('content')
@@ -19,6 +19,7 @@
         <span class="chip">{{ $counts['new'] ?? 0 }} nouvelle(s)</span>
         @if ($counts['similar'] ?? 0)<span class="chip">{{ $counts['similar'] }} ressemblant à un mouvement déjà noté (décochées)</span>@endif
         @if ($counts['known'] ?? 0)<span class="chip">{{ $counts['known'] }} déjà importée(s)</span>@endif
+        @if ($counts['price'] ?? 0)<span class="chip">{{ $counts['price'] }} abonnement(s) à un nouveau prix</span>@endif
     </div>
 
     <form method="POST" action="{{ route('import.store') }}" data-busy="Import…">
@@ -34,10 +35,10 @@
                     <tbody>
                         @foreach ($rows as $i => $row)
                             <tr class="{{ $row['status'] === 'known' ? 'is-known' : '' }}">
-                                <td><input type="checkbox" name="import[{{ $i }}]" value="1" aria-label="Importer cette ligne" @checked($row['status'] === 'new') @disabled($row['status'] === 'known') @if ($row['status'] !== 'known') data-check-item @endif></td>
+                                <td><input type="checkbox" name="import[{{ $i }}]" value="1" aria-label="Importer cette ligne" @checked(in_array($row['status'], ['new', 'price'], true)) @disabled($row['status'] === 'known') @if ($row['status'] !== 'known') data-check-item @endif></td>
                                 <td>{{ \Illuminate\Support\Carbon::parse($row['date'])->format('d/m/Y') }}</td>
                                 <td>{{ $row['label'] }}
-                                    @if ($statusLabels[$row['status']])<br><span class="badge {{ $row['status'] === 'similar' ? 'badge-warning' : '' }}">{{ $statusLabels[$row['status']] }}</span>@endif
+                                    @if ($statusLabels[$row['status']])<br><span class="badge {{ ['similar' => 'badge-warning', 'price' => 'badge-info'][$row['status']] ?? '' }}">{{ $statusLabels[$row['status']] }}</span>@endif
                                     @if ($row['similar'])<span class="small muted"> {{ $row['similar'] }}</span>@endif
                                 </td>
                                 <td class="num"><x-money-amount :value="$row['amount']" signed /></td>

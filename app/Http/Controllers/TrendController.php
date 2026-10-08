@@ -23,6 +23,7 @@ class TrendController extends Controller
             'categories' => $data['categories'],
             'day' => $data['day'],
             'notable' => $trends->notable($scope, limit: 10),
+            'yearAgo' => $trends->yearAgo($scope),
             'max' => max(1, (int) $data['categories']->max(fn ($row) => max($row['current'], $row['usual']))),
         ]);
     }

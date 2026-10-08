@@ -36,6 +36,10 @@ class DashboardController extends Controller
 
         $totals = $stats->totals($scope, $from, $to);
         $previous = $stats->totals($scope, $prevFrom, $prevTo);
+        // Même période l'an dernier (pour l'année, c'est déjà la comparaison « vs avant »).
+        $lastYear = in_array($period, ['semaine', 'mois'], true)
+            ? $stats->totals($scope, $from->copy()->subYearNoOverflow(), $to->copy()->subYearNoOverflow())
+            : null;
         $accounts = $stats->accounts($scope);
         $quotes = $scope !== 'perso' ? $stats->quotes($from, $to) : null;
         $lastSync = $settings->get('argent.last_sync_at');
@@ -49,6 +53,8 @@ class DashboardController extends Controller
             'to' => $to,
             'totals' => $totals,
             'previous' => $previous,
+            'lastYear' => $lastYear && ($lastYear['income'] || $lastYear['expense']) ? $lastYear : null,
+            'lastYearLabel' => $period === 'mois' ? rtrim($from->copy()->subYear()->locale('fr')->isoFormat('MMM YYYY'), '.') : 'la même semaine en '.($from->year - 1),
             'balance' => (int) $accounts->sum('current_balance'),
             'accounts' => $accounts,
             'monthly' => $stats->monthly($scope),

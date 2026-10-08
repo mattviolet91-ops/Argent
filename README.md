@@ -29,6 +29,18 @@ envoie chaque lundi les paiements reçus et les frais des chantiers.
   avant la fin de la garantie.
 - « Qui me doit quoi » : prêts, avances, emprunts et remboursements par personne,
   rappel si un remboursement tarde.
+- Justificatifs (photo du ticket, PDF) sur n'importe quel mouvement, gardés en privé.
+- Chantiers et projets : une étiquette sur des mouvements de toutes catégories donne
+  le coût total, l'encaissé, la marge et le budget prévu.
+- Notes de frais : dépense pro payée avec un compte perso, comptée en pro, suivie
+  jusqu'au virement de remboursement.
+- Hausse de prix d'un abonnement repérée à l'import du relevé (les Fixes suivent).
+- « Puis-je me le permettre ? » : solde le plus bas à venir avec un achat (en une
+  ou plusieurs fois), budget, épargne habituelle.
+- Crédits : capital restant, date de fin, intérêts restants, tableau d'amortissement,
+  mensualité dans les Fixes.
+- Patrimoine net sur 12 mois, comparaison avec le même mois l'an dernier, bilan
+  du mois en PDF (pour le comptable).
 - Lien avec l'app de devis : paiements et frais copiés chaque lundi (clé en lecture
   seule), bilan de la semaine figé et notification.
 - Mode discret (montants floutés), export Excel (CSV), sauvegarde chaque nuit,

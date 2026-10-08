@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\MoneyAccount;
 use App\Models\MoneyCategory;
+use App\Models\MoneyTag;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -21,6 +22,7 @@ class AppServiceProvider extends ServiceProvider
             $view->with([
                 'quickAccounts' => auth()->check() ? MoneyAccount::query()->active()->ordered()->get() : collect(),
                 'quickCategories' => auth()->check() ? MoneyCategory::query()->active()->ordered()->get() : collect(),
+                'quickTags' => auth()->check() ? MoneyTag::query()->whereNull('archived_at')->orderBy('name')->pluck('name') : collect(),
             ]);
         });
     }

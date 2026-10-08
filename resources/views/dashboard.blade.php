@@ -64,11 +64,13 @@
             <span class="label">Gagné {{ $periodLabel }}</span>
             <span class="value m-pos"><x-money-amount :value="$totals['income']" /></span>
             @if ($d = $delta($totals['income'], $previous['income'], true))<span class="delta {{ $d['class'] }}">{{ $d['text'] }} vs avant</span>@endif
+            @if ($lastYear && ($d = $delta($totals['income'], $lastYear['income'], true)))<span class="delta {{ $d['class'] }}">{{ $d['text'] }} vs {{ $lastYearLabel }}</span>@endif
         </a>
         <a class="card kpi kpi-link" style="border-top:4px solid var(--danger)" href="{{ route('transactions.index', ['type' => 'expense', 'periode' => $period, 'du' => $period === 'perso' ? $from->toDateString() : null, 'au' => $period === 'perso' ? $to->toDateString() : null]) }}">
             <span class="label">Dépensé {{ $periodLabel }}</span>
             <span class="value m-neg"><x-money-amount :value="$totals['expense']" /></span>
             @if ($d = $delta($totals['expense'], $previous['expense'], false))<span class="delta {{ $d['class'] }}">{{ $d['text'] }} vs avant</span>@endif
+            @if ($lastYear && ($d = $delta($totals['expense'], $lastYear['expense'], false)))<span class="delta {{ $d['class'] }}">{{ $d['text'] }} vs {{ $lastYearLabel }}</span>@endif
         </a>
         <div class="card kpi" style="border-top:4px solid {{ $totals['net'] >= 0 ? 'var(--success)' : 'var(--danger)' }}">
             <span class="label">{{ $totals['net'] >= 0 ? 'Gagné' : 'Perdu' }} au final</span>

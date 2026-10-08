@@ -64,10 +64,49 @@
                     </div>
                 @endunless
                 <x-field name="label" label="Libellé" :value="$transaction->label" required maxlength="160" />
+                <div class="field @error('tags') has-error @enderror">
+                    <label for="tags">Chantier / projet</label>
+                    <input id="tags" type="text" name="tags" value="{{ old('tags', $transaction->tags->pluck('name')->implode(', ')) }}" list="edit-tag-list" maxlength="300" autocomplete="off" placeholder="ex. Dupont, Salle de bain">
+                    <datalist id="edit-tag-list">@foreach ($tagNames as $tagName)<option value="{{ $tagName }}"></option>@endforeach</datalist>
+                    <span class="hint">Plusieurs : séparez par des virgules.</span>
+                    @error('tags')<span class="error">{{ $message }}</span>@enderror
+                </div>
                 <x-field name="notes" label="Note" :value="$transaction->notes" maxlength="500" class="span-2" />
+                @unless ($locked || $transaction->isTransfer())
+                    <label class="check span-2" data-when="expense"><input type="checkbox" name="claim" value="1" @checked(old('claim', $transaction->isClaim()))>
+                        <span>Note de frais : dépense pro payée avec un compte perso, à me faire rembourser
+                            @if ($transaction->claim === 'rembourse')<span class="badge badge-success">remboursée le {{ $transaction->claim_settled_on?->format('d/m/Y') }}</span>@endif
+                        </span></label>
+                @endunless
             </div>
             <div class="form-actions"><button class="btn" type="submit">Enregistrer</button></div>
         </form>
+    </div>
+
+    <div class="card" id="justificatifs" style="margin-top:1rem">
+        <div class="card-head"><h2>Justificatifs</h2><span class="small muted">{{ $transaction->attachments->count() }} / {{ \App\Models\MoneyAttachment::MAX_PER_TRANSACTION }}</span></div>
+        @if ($transaction->attachments->isNotEmpty())
+            <div class="attach-grid">
+                @foreach ($transaction->attachments as $file)
+                    <div class="attach-item">
+                        <a href="{{ route('attachments.show', $file) }}" target="_blank" rel="noopener" class="attach-preview">
+                            @if ($file->isImage())<img src="{{ route('attachments.show', $file) }}" alt="{{ $file->name }}" loading="lazy">@else<x-icon name="file" /><span class="small">{{ \Illuminate\Support\Str::limit($file->name, 22) }}</span>@endif
+                        </a>
+                        <form method="POST" action="{{ route('attachments.destroy', $file) }}" data-confirm="Retirer ce justificatif ?">@csrf @method('DELETE')<button class="link-btn small" type="submit">Retirer</button></form>
+                    </div>
+                @endforeach
+            </div>
+        @else
+            <p class="muted small" style="margin-top:0">Photo du ticket, facture… gardée sur votre serveur, visible seulement dans l'app.</p>
+        @endif
+        @if ($transaction->attachments->count() < \App\Models\MoneyAttachment::MAX_PER_TRANSACTION)
+            <form method="POST" action="{{ route('attachments.store', $transaction) }}" enctype="multipart/form-data" class="attach-form" data-busy="Envoi…">
+                @csrf
+                <input type="file" name="justificatif" accept="image/*,application/pdf" data-shrink-image required aria-label="Photo ou PDF">
+                <button class="btn btn-sm btn-secondary" type="submit"><x-icon name="paperclip" /> Joindre</button>
+            </form>
+            @error('justificatif')<p class="error">{{ $message }}</p>@enderror
+        @endif
     </div>
 
     @if (! $transaction->isTransfer() && $transaction->amount < 0)

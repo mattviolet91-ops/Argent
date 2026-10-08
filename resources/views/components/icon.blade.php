@@ -26,6 +26,8 @@
         'trash' => '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/>',
         'chevron-left' => '<path d="m15 5-7 7 7 7"/>',
         'chevron-right' => '<path d="m9 5 7 7-7 7"/>',
+        'tag' => '<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.6"/>',
+        'paperclip' => '<path d="m20 11.5-8.1 8.1a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/>',
         'trend' => '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
         'chevron-up' => '<path d="m6 15 6-6 6 6"/>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"/>',
