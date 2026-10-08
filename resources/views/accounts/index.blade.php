@@ -3,26 +3,30 @@
 @section('content')
     @include('_nav')
 
-    <div class="grid money-mini">
-        <div class="card kpi kpi-accent"><span class="label">Total</span><span class="value"><x-money-amount :value="$totals['all']" /></span></div>
-        <div class="card kpi"><span class="label">Perso</span><span class="value"><x-money-amount :value="$totals['perso']" /></span></div>
-        <div class="card kpi"><span class="label">Pro</span><span class="value"><x-money-amount :value="$totals['pro']" /></span></div>
+    <div class="grid money-kpis" style="margin-bottom:1rem">
+        <div class="card kpi kpi-accent"><span class="label">Patrimoine net</span><span class="value"><x-money-amount :value="$totals['all']" /></span><span class="delta">Perso <x-money-amount :value="$totals['perso']" /> · Pro <x-money-amount :value="$totals['pro']" /></span></div>
+        <div class="card kpi"><span class="label">Disponible</span><span class="value"><x-money-amount :value="$totals['courant']" /></span><span class="delta">comptes courants, espèces</span></div>
+        <div class="card kpi" style="border-top:4px solid var(--success)"><span class="label">Épargne et placements</span><span class="value m-pos"><x-money-amount :value="$totals['epargne']" /></span></div>
+        <div class="card kpi" style="border-top:4px solid var(--danger)"><span class="label">Reste à rembourser</span><span class="value m-neg"><x-money-amount :value="-$totals['dette']" /></span><span class="delta">crédits, cartes à débit différé</span></div>
     </div>
 
-    <ul class="list">
-        @foreach ($accounts as $account)
-            <li>
-                <a class="list-item" href="{{ route('accounts.show', $account) }}">
-                    <span class="tx-icon" style="background:{{ $account->color ?? '#8A99A6' }}" aria-hidden="true"><x-icon name="wallet" /></span>
-                    <span class="list-main"><strong>{{ $account->name }}</strong><span class="muted small">{{ $account->kindLabel() }} · {{ $account->scopeLabel() }}</span></span>
-                    <span class="list-meta"><strong><x-money-amount :value="$account->current_balance" /></strong></span>
-                </a>
-            </li>
-        @endforeach
-    </ul>
+    @foreach ($groups as $group)
+        <div class="money-row" style="margin:.25rem 0 .5rem"><h2 style="margin:0">{{ $group['label'] }}</h2><strong><x-money-amount :value="$group['accounts']->sum('current_balance')" /></strong></div>
+        <ul class="list">
+            @foreach ($group['accounts'] as $account)
+                <li>
+                    <a class="list-item" href="{{ route('accounts.show', $account) }}">
+                        <span class="tx-icon" style="background:{{ $account->color ?? '#8A99A6' }}" aria-hidden="true"><x-icon :name="$account->icon()" /></span>
+                        <span class="list-main"><strong>{{ $account->name }}</strong><span class="muted small">{{ $account->kindLabel() }} · {{ $account->scopeLabel() }}</span></span>
+                        <span class="list-meta"><strong><x-money-amount :value="$account->current_balance" /></strong>@if ($account->isDebt())<span class="small muted">à rembourser</span>@endif</span>
+                    </a>
+                </li>
+            @endforeach
+        </ul>
+    @endforeach
 
     <details class="card" @if ($errors->any()) open @endif>
-        <summary><strong>+ Ajouter un compte</strong> <span class="muted small">(livret, espèces, autre banque…)</span></summary>
+        <summary><strong>+ Ajouter un compte</strong> <span class="muted small">(livret, assurance-vie, bourse, crypto, crédit, espèces…)</span></summary>
         <form method="POST" action="{{ route('accounts.store') }}" style="margin-top:1rem">
             @csrf
             @include('accounts._fields', ['account' => null])

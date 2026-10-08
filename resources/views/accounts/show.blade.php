@@ -15,10 +15,16 @@
 
     <div class="page-head">
         <div>
-            <h1 style="display:flex;align-items:center;gap:.5rem"><span class="swatch-dot" style="background:{{ $account->color ?? '#8A99A6' }};width:1rem;height:1rem"></span>{{ $account->name }}</h1>
+            <h1 style="display:flex;align-items:center;gap:.5rem"><span class="tx-icon" style="background:{{ $account->color ?? '#8A99A6' }}" aria-hidden="true"><x-icon :name="$account->icon()" /></span>{{ $account->name }}</h1>
             <p>{{ $account->kindLabel() }} · {{ $account->scopeLabel() }}{{ $account->archived_at ? ' · archivé' : '' }}</p>
         </div>
-        <div class="kpi" style="text-align:right"><span class="label">Solde aujourd'hui</span><span class="value"><x-money-amount :value="$balance" /></span></div>
+        <div class="kpi" style="text-align:right">
+            @if ($account->isDebt())
+                <span class="label">Reste à rembourser</span><span class="value m-neg"><x-money-amount :value="max(0, -$balance)" /></span>
+            @else
+                <span class="label">Solde aujourd'hui</span><span class="value"><x-money-amount :value="$balance" /></span>
+            @endif
+        </div>
     </div>
 
     @if ($coords->count() > 1)

@@ -9,12 +9,29 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** Compte de l'app Argent (compte courant, livret, espèces…), perso ou pro. */
 class MoneyAccount extends Model
 {
-    public const KINDS = [
-        'courant' => 'Compte courant',
-        'epargne' => 'Épargne (livret…)',
-        'especes' => 'Espèces',
-        'carte' => 'Carte / compte en ligne',
-        'autre' => 'Autre',
+    /** Types de comptes : clé => [libellé, groupe, icône]. */
+    public const TYPES = [
+        'courant' => ['Compte courant', 'courant', 'bank'],
+        'carte' => ['Compte en ligne / prépayé (PayPal, Lydia…)', 'courant', 'card'],
+        'especes' => ['Espèces / caisse', 'courant', 'cash'],
+        'titres_resto' => ['Titres-restaurant', 'courant', 'meal'],
+        'epargne' => ['Livret d\'épargne (Livret A, LDDS, LEP…)', 'epargne', 'piggy'],
+        'pel' => ['Épargne logement (PEL, CEL)', 'epargne', 'home'],
+        'assurance_vie' => ['Assurance-vie', 'epargne', 'shield'],
+        'bourse' => ['Bourse (PEA, compte-titres)', 'epargne', 'chart'],
+        'crypto' => ['Crypto-monnaies', 'epargne', 'crypto'],
+        'retraite' => ['Épargne retraite (PER)', 'epargne', 'calendar'],
+        'carte_credit' => ['Carte de crédit (débit différé)', 'dette', 'card'],
+        'credit' => ['Crédit / prêt (immobilier, auto, conso…)', 'dette', 'loan'],
+        'autre' => ['Autre', 'autre', 'wallet'],
+    ];
+
+    /** Groupes affichés sur la page Comptes. */
+    public const GROUPS = [
+        'courant' => 'Comptes courants',
+        'epargne' => 'Épargne et placements',
+        'dette' => 'Crédits et dettes',
+        'autre' => 'Autres',
     ];
 
     public const SCOPES = [
@@ -57,7 +74,23 @@ class MoneyAccount extends Model
 
     public function kindLabel(): string
     {
-        return self::KINDS[$this->kind] ?? $this->kind;
+        return self::TYPES[$this->kind][0] ?? $this->kind;
+    }
+
+    public function group(): string
+    {
+        return self::TYPES[$this->kind][1] ?? 'autre';
+    }
+
+    public function icon(): string
+    {
+        return self::TYPES[$this->kind][2] ?? 'wallet';
+    }
+
+    /** Crédit ou carte à débit différé : le solde est ce qui reste à rembourser (négatif). */
+    public function isDebt(): bool
+    {
+        return $this->group() === 'dette';
     }
 
     public function scopeLabel(): string
