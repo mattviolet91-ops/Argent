@@ -4,8 +4,11 @@ namespace App\Services;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 
 /**
  * Verrou de l'app Argent : un seul propriétaire (le compte qui a créé le code),
@@ -21,6 +24,9 @@ class MoneyLockService
     public const MAX_ATTEMPTS = 5;
 
     public const BLOCK_MINUTES = 15;
+
+    /** Au-delà de ce nombre de codes faux en 24 h : tous les appareils sont déconnectés (mot de passe exigé). */
+    public const MAX_DAILY = 10;
 
     /** Délai de verrouillage automatique, en minutes. */
     public const DELAYS = [5 => '5 minutes', 15 => '15 minutes', 30 => '30 minutes', 60 => '1 heure'];
@@ -69,6 +75,12 @@ class MoneyLockService
         return array_key_exists($minutes, self::DELAYS) ? $minutes : 15;
     }
 
+    /** Reverrouiller quand l'app passe en arrière-plan plus de 30 secondes. */
+    public function locksOnLeave(): bool
+    {
+        return (bool) $this->settings->get('argent.lock_on_leave', true);
+    }
+
     public function isUnlocked(Request $request): bool
     {
         $session = $request->session();
@@ -80,8 +92,11 @@ class MoneyLockService
     }
 
     /** Chaque page ouverte repousse le verrouillage automatique. */
-    public function unlock(Request $request): void
+    public function unlock(Request $request, bool $fresh = false): void
     {
+        if ($fresh) {
+            $request->session()->regenerate();
+        }
         $request->session()->put([
             self::SESSION_KEY => now()->addMinutes($this->lockMinutes())->getTimestamp(),
             self::SESSION_VERSION => $this->codeVersion(),
@@ -107,6 +122,13 @@ class MoneyLockService
         RateLimiter::hit($this->limiterKey(), self::BLOCK_MINUTES * 60);
         $left = max(0, self::MAX_ATTEMPTS - RateLimiter::attempts($this->limiterKey()));
 
+        RateLimiter::hit($this->limiterKey().':jour', 24 * 3600);
+        if (RateLimiter::attempts($this->limiterKey().':jour') >= self::MAX_DAILY) {
+            $this->logoutEverywhere($request);
+
+            return 0;
+        }
+
         if ($left === 0) {
             ActivityLogger::log('argent.blocked', 'App Argent bloqué '.self::BLOCK_MINUTES.' minutes après '.self::MAX_ATTEMPTS.' codes faux');
             app(PushService::class)->send(
@@ -123,6 +145,32 @@ class MoneyLockService
     public function succeeded(): void
     {
         RateLimiter::clear($this->limiterKey());
+        RateLimiter::clear($this->limiterKey().':jour');
+    }
+
+    /**
+     * Trop de codes faux sur une journée : quelqu'un essaie peut-être de deviner le code.
+     * Toutes les sessions et tous les « rester connecté » sont coupés : il faudra le mot de passe.
+     */
+    private function logoutEverywhere(Request $request): void
+    {
+        $user = $request->user();
+        if (! $user) {
+            return;
+        }
+        ActivityLogger::log('argent.logout_all', 'Déconnexion de tous les appareils après '.self::MAX_DAILY.' codes faux en 24 h');
+        app(PushService::class)->send(
+            'Argent : appareils déconnectés',
+            self::MAX_DAILY.' codes faux en 24 h : tous les appareils ont été déconnectés. Si ce n\'était pas vous, changez votre mot de passe.',
+            route('login'),
+            $user->id,
+        );
+        $user->forceFill(['remember_token' => Str::random(60)])->save();
+        DB::table('sessions')->where('user_id', $user->id)->delete();
+        RateLimiter::clear($this->limiterKey().':jour');
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
     }
 
     private function limiterKey(): string

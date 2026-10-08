@@ -19,7 +19,7 @@ class AccountController extends Controller
     public function index(MoneyStatsService $stats): View
     {
         $accounts = MoneyAccount::query()->ordered()->get()
-            ->each(fn (MoneyAccount $account) => $account->setAttribute('current_balance', $account->balance()));
+            ->each(fn (MoneyAccount $account) => $account->setAttribute('current_balance', $stats->balanceOf($account)));
         $active = $accounts->whereNull('archived_at');
         $groups = collect(MoneyAccount::GROUPS)
             ->map(fn ($label, $key) => ['label' => $label, 'accounts' => $active->filter(fn (MoneyAccount $a) => $a->group() === $key)->values()])

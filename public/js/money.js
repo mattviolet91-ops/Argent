@@ -10,7 +10,21 @@
     var lockAt = Date.now() + seconds * 1000;
     var check = function () { if (Date.now() >= lockAt) { window.location.replace(lockUrl); } };
     setInterval(check, 15000);
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) { check(); } });
+    // Verrouillage quand on quitte l'app (autre app, écran éteint) plus de 30 secondes.
+    var onLeave = root.getAttribute('data-lock-on-leave') === '1';
+    var hiddenAt = 0;
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) { hiddenAt = Date.now(); return; }
+      if (onLeave && hiddenAt && Date.now() - hiddenAt > 30000) {
+        document.documentElement.style.visibility = 'hidden';
+        var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+        fetch(root.getAttribute('data-lock-post'), { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'X-CSRF-TOKEN': token, Accept: 'text/html' } })
+          .catch(function () {})
+          .then(function () { window.location.replace(lockUrl); });
+        return;
+      }
+      check();
+    });
     // Retour arrière vers une page gardée par le navigateur : on revérifie auprès du serveur.
     window.addEventListener('pageshow', function (event) { if (event.persisted) { window.location.reload(); } });
   }

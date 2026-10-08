@@ -131,7 +131,7 @@ class LockController extends Controller
         }
 
         $this->lock->succeeded();
-        $this->lock->unlock($request);
+        $this->lock->unlock($request, fresh: true);
 
         return redirect()->to($this->intended($request));
     }
@@ -162,7 +162,7 @@ class LockController extends Controller
         }
 
         $this->lock->succeeded();
-        $this->lock->unlock($request);
+        $this->lock->unlock($request, fresh: true);
 
         return response()->json(['redirect' => $this->intended($request)]);
     }

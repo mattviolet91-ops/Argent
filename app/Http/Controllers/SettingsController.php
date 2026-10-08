@@ -52,6 +52,7 @@ class SettingsController extends Controller
             'weeklyPush' => (bool) $this->settings->get('argent.weekly_push', true),
             'pushAmounts' => (bool) $this->settings->get('argent.push_amounts', false),
             'alertsEnabled' => (bool) $this->settings->get('alerts.enabled', true),
+            'lockOnLeave' => $this->lock->locksOnLeave(),
             'alertsBudgetWarning' => (bool) $this->settings->get('alerts.budget_warning', true),
         ]);
     }
@@ -71,6 +72,7 @@ class SettingsController extends Controller
             'argent.weekly_push' => $request->boolean('weekly_push'),
             'argent.push_amounts' => $request->boolean('push_amounts'),
             'alerts.enabled' => $request->boolean('alerts_enabled'),
+            'argent.lock_on_leave' => $request->boolean('lock_on_leave'),
             'alerts.budget_warning' => $request->boolean('alerts_budget_warning'),
         ]);
         $this->lock->unlock($request);
@@ -167,6 +169,12 @@ class SettingsController extends Controller
             .($fixed ? ', '.$fixed.' dépense(s) fixe(s)' : '').'.');
     }
 
+    /** Texte sûr pour Excel : pas d'exécution de formule (libellés venant de la banque ou des clients). */
+    private static function csvText(?string $value): ?string
+    {
+        return $value !== null && preg_match('/^[=+\-@\t\r]/', $value) ? "'".$value : $value;
+    }
+
     /** Tous les mouvements en CSV (ouvrable dans Excel) : une copie à garder. */
     public function export(): StreamedResponse
     {
@@ -179,16 +187,16 @@ class SettingsController extends Controller
             foreach (MoneyTransaction::query()->with(['account', 'category'])->orderBy('occurred_on')->orderBy('id')->lazy(500) as $t) {
                 fputcsv($out, [
                     $t->occurred_on->format('d/m/Y'),
-                    $t->account?->name,
+                    self::csvText($t->account?->name),
                     $t->account?->scopeLabel(),
-                    $t->category?->name,
-                    $t->label,
+                    self::csvText($t->category?->name),
+                    self::csvText($t->label),
                     number_format($t->amount / 100, 2, ',', ''),
                     match ($t->kind) {
                         'transfer' => 'Virement', 'income' => 'Entrée', default => 'Sortie'
                     },
                     MoneyTransaction::SOURCES[$t->source] ?? $t->source,
-                    $t->notes,
+                    self::csvText($t->notes),
                 ], ';', '"', '');
             }
             fclose($out);

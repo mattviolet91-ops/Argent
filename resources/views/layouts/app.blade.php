@@ -17,7 +17,7 @@
 @endphp
 
 @section('body')
-<div class="app" @if ($unlocked) data-money-root data-lock-seconds="{{ app(\App\Services\MoneyLockService::class)->lockMinutes() * 60 }}" data-lock-url="{{ route('unlock') }}" @endif>
+<div class="app" @if ($unlocked) data-money-root data-lock-seconds="{{ app(\App\Services\MoneyLockService::class)->lockMinutes() * 60 }}" data-lock-url="{{ route('unlock') }}" data-lock-post="{{ route('lock') }}" data-lock-on-leave="{{ app(\App\Services\MoneyLockService::class)->locksOnLeave() ? '1' : '0' }}" @endif>
     <header class="topbar">
         <a class="brand" href="{{ route('dashboard') }}">
             <img class="brand-img-icon" src="{{ asset('icons/icon-192.png') }}" alt="">

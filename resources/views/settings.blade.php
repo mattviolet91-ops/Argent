@@ -56,6 +56,7 @@
                 </select>
             </div>
         </div>
+        <label class="check" style="margin-top:.75rem"><input type="checkbox" name="lock_on_leave" value="1" @checked($lockOnLeave)> <span>Verrouiller dès que je quitte l'app plus de 30 secondes <span class="muted small">(autre application, écran éteint)</span></span></label>
         <h3 style="margin-top:1.25rem">Notifications</h3>
         <label class="check"><input type="checkbox" name="weekly_push" value="1" @checked($weeklyPush)> <span>Me prévenir quand le bilan de la semaine est prêt</span></label>
         <h3 style="margin-top:1.25rem">Alertes</h3>

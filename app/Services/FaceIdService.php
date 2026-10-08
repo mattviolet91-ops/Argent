@@ -103,7 +103,9 @@ class FaceIdService
 
     private function server(Request $request): WebAuthn
     {
-        return new WebAuthn('Argent', $request->getHost(), ['none'], true);
+        $host = parse_url((string) config('app.url'), PHP_URL_HOST) ?: $request->getHost();
+
+        return new WebAuthn('Argent', $host, ['none'], true);
     }
 
     private function pullChallenge(Request $request): ?ByteBuffer

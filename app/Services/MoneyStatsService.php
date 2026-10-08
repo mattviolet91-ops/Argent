@@ -20,7 +20,47 @@ class MoneyStatsService
 {
     public const SCOPES = ['all' => 'Tout', 'perso' => 'Perso', 'pro' => 'Pro'];
 
+    /** @var array<int, int>|null soldes du jour par compte (calculés une fois par page) */
+    private ?array $balances = null;
+
     public function __construct(private readonly Settings $settings) {}
+
+    /**
+     * Solde d'aujourd'hui de chaque compte, en une seule requête :
+     * solde de départ + mouvements depuis la date de départ.
+     *
+     * @return array<int, int>
+     */
+    public function balances(): array
+    {
+        if ($this->balances !== null) {
+            return $this->balances;
+        }
+        $sums = MoneyTransaction::query()
+            ->join('money_accounts', 'money_accounts.id', '=', 'money_transactions.account_id')
+            ->whereColumn('money_transactions.occurred_on', '>=', 'money_accounts.opening_on')
+            ->whereDate('money_transactions.occurred_on', '<=', today())
+            ->groupBy('money_transactions.account_id')
+            ->selectRaw('money_transactions.account_id as id, SUM(money_transactions.amount) as total')
+            ->pluck('total', 'id');
+
+        return $this->balances = MoneyAccount::query()->pluck('opening_balance', 'id')
+            ->map(fn ($opening, $id) => (int) $opening + (int) ($sums[$id] ?? 0))->all();
+    }
+
+    /** @var Collection<int, MoneyRecurring>|null */
+    private ?Collection $autoDeposits = null;
+
+    /** Virements automatiques actifs (versements vers l'épargne et les objectifs). */
+    private function autoDeposits(): Collection
+    {
+        return $this->autoDeposits ??= MoneyRecurring::query()->where('active', true)->whereNotNull('to_account_id')->get();
+    }
+
+    public function balanceOf(?MoneyAccount $account): int
+    {
+        return $account ? ($this->balances()[$account->id] ?? $account->balance()) : 0;
+    }
 
     /** @return array{income: int, expense: int, net: int} */
     public function totals(string $scope, Carbon $from, Carbon $to): array
@@ -62,7 +102,7 @@ class MoneyStatsService
         return MoneyAccount::query()->active()->ordered()
             ->when($scope !== 'all', fn ($q) => $q->where('scope', $scope))
             ->get()
-            ->each(fn (MoneyAccount $account) => $account->setAttribute('current_balance', $account->balance()));
+            ->each(fn (MoneyAccount $account) => $account->setAttribute('current_balance', $this->balanceOf($account)));
     }
 
     /**
@@ -74,16 +114,21 @@ class MoneyStatsService
     {
         $until ??= today();
         $start = $until->copy()->startOfMonth()->subMonthsNoOverflow($months - 1);
+        // Totaux par mois calculés par la base (pas de chargement de chaque mouvement).
         $rows = MoneyTransaction::query()->real()->inScope($scope)->betweenDates($start, $until->copy()->endOfMonth())
-            ->get(['occurred_on', 'amount'])
-            ->groupBy(fn (MoneyTransaction $t) => $t->occurred_on->format('Y-m'));
+            ->toBase()
+            ->selectRaw('SUBSTR(occurred_on, 1, 7) as ym')
+            ->selectRaw('COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) as income')
+            ->selectRaw('COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) as expense')
+            ->groupBy('ym')
+            ->get()->keyBy('ym');
 
         $series = [];
         for ($i = 0; $i < $months; $i++) {
             $month = $start->copy()->addMonthsNoOverflow($i);
-            $items = $rows->get($month->format('Y-m'), collect());
-            $income = (int) $items->where('amount', '>', 0)->sum('amount');
-            $expense = (int) -$items->where('amount', '<', 0)->sum('amount');
+            $row = $rows->get($month->format('Y-m'));
+            $income = (int) ($row->income ?? 0);
+            $expense = (int) ($row->expense ?? 0);
             $series[] = ['month' => $month, 'income' => $income, 'expense' => $expense, 'net' => $income - $expense];
         }
 
@@ -158,12 +203,12 @@ class MoneyStatsService
 
         $extra = [];
         if ($goal->isSaving()) {
-            $current = $goal->account ? $goal->account->balance() : $goal->saved;
+            $current = $goal->account ? $this->balanceOf($goal->account) : $goal->saved;
             $left = $goal->target - $current;
             if ($goal->account) {
                 // Dépôts déjà notés pour plus tard, et versements automatiques vers ce compte.
                 $extra['planned'] = (int) $goal->account->transactions()->whereDate('occurred_on', '>', today())->sum('amount');
-                $extra['monthly_auto'] = (int) MoneyRecurring::query()->where('active', true)->where('to_account_id', $goal->account_id)->get()
+                $extra['monthly_auto'] = (int) $this->autoDeposits()->where('to_account_id', $goal->account_id)
                     ->sum(fn (MoneyRecurring $r) => $r->monthlyAmount());
             }
             if ($goal->deadline) {

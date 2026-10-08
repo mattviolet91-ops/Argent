@@ -61,7 +61,7 @@ class MoneyAlertService
         }
 
         foreach (MoneyAccount::query()->active()->whereNotNull('alert_below')->ordered()->get() as $account) {
-            $balance = $account->balance();
+            $balance = $this->stats->balanceOf($account);
             if ($balance >= $account->alert_below) {
                 continue;
             }
