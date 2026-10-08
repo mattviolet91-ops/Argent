@@ -278,6 +278,27 @@ class MoneyStatsService
     }
 
     /**
+     * Échéances des dépenses, revenus et virements fixes entre deux dates (calendrier).
+     *
+     * @return Collection<int, array{recurring: MoneyRecurring, date: Carbon}>
+     */
+    public function occurrences(Carbon $from, Carbon $to): Collection
+    {
+        $items = collect();
+        foreach (MoneyRecurring::query()->where('active', true)->whereDate('next_on', '<=', $to)->with(['account', 'toAccount', 'category'])->get() as $recurring) {
+            $date = $recurring->next_on->copy();
+            for ($i = 0; $i < 800 && $date->lte($to); $i++) {
+                if ($date->gte($from)) {
+                    $items->push(['recurring' => $recurring, 'date' => $date->copy()]);
+                }
+                $date = $recurring->nextAfter($date);
+            }
+        }
+
+        return $items->sortBy(fn ($item) => $item['date']->timestamp)->values();
+    }
+
+    /**
      * Solde estimé à la fin du mois : soldes d'aujourd'hui + dépenses et revenus fixes
      * à venir + mouvements déjà notés pour plus tard (dépôts prévus…). Un virement entre
      * deux comptes de la vue ne change rien.

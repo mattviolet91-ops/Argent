@@ -134,6 +134,13 @@ class TransactionController extends Controller
             return redirect()->route('transactions.index')->with('status', 'Mouvement modifié.');
         }
 
+        // Prêt ou remboursement (« Qui me doit quoi ») : montant et date se changent sur la fiche de la personne.
+        if ($transaction->source === 'loan') {
+            $transaction->update(['label' => $data['label'], 'notes' => $data['notes'] ?? null]);
+
+            return redirect()->route('transactions.index')->with('status', 'Mouvement modifié.');
+        }
+
         $amount = $this->amount($request, 'amount');
         if ($transaction->isTransfer()) {
             DB::transaction(function () use ($transaction, $data, $amount) {

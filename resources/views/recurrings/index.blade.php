@@ -16,6 +16,32 @@
         <div class="card kpi"><span class="label">Reste / mois</span><span class="value"><x-money-amount :value="$monthlyIn - $monthlyOut" signed /></span>@if ($monthlySaved)<span class="delta">dont <x-money-amount :value="$monthlySaved" /> mis de côté</span>@endif</div>
     </div>
 
+    @if ($suggestions->isNotEmpty())
+        <div class="card suggest-card" id="abonnements">
+            <div class="card-head"><h2>Abonnements repérés</h2><span class="badge badge-info">{{ $suggestions->count() }}</span></div>
+            <p class="small muted" style="margin-top:0">Ces dépenses reviennent régulièrement dans vos relevés et mouvements. Ajoutées aux Fixes, elles sont prévues dans le solde de fin de mois et le calendrier (les prochains prélèvements importés seront reconnus, sans doublon).</p>
+            <ul class="suggest-list">
+                @foreach ($suggestions as $s)
+                    <li>
+                        <form method="POST" action="{{ route('recurrings.adopt') }}" class="suggest-form">
+                            @csrf
+                            <input type="hidden" name="key" value="{{ $s['key'] }}">
+                            <div class="suggest-main">
+                                <input class="suggest-label" type="text" name="sub_label" value="{{ $s['label'] }}" maxlength="160" required aria-label="Nom de l'abonnement">
+                                <span class="small muted">{{ \App\Models\MoneyRecurring::FREQUENCIES[$s['frequency']] }} · {{ $s['account']->name }} · vu {{ $s['count'] }} fois, dernier le {{ $s['last_on']->format('d/m/Y') }} · prochain vers le {{ $s['next_on']->format('d/m') }}</span>
+                            </div>
+                            <strong class="suggest-amount"><x-money-amount :value="$s['amount']" signed /></strong>
+                            <div class="suggest-actions">
+                                <button class="btn btn-sm" type="submit"><x-icon name="plus" /> Ajouter aux Fixes</button>
+                                <button class="btn btn-sm btn-secondary" type="submit" formaction="{{ route('recurrings.dismiss') }}" formnovalidate>Ce n'en est pas un</button>
+                            </div>
+                        </form>
+                    </li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     @if ($recurrings->isNotEmpty())
         <ul class="list">
             @foreach ($recurrings as $recurring)

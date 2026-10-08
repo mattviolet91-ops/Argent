@@ -9,7 +9,11 @@
         ['categories.index', 'Budgets', 'chart', 'categories.*'],
         ['goals.index', 'Objectifs', 'target', 'goals.*'],
         ['recurrings.index', 'Fixes', 'repeat', 'recurrings.*'],
-        ['reports.index', 'Bilans', 'calendar', 'reports.*'],
+        ['calendar', 'Calendrier', 'calendar', 'calendar'],
+        ['trends', 'Tendances', 'trend', 'trends'],
+        ['purchases.index', 'Garanties', 'shield', 'purchases.*'],
+        ['loans.index', 'Qui me doit quoi', 'users', 'loans.*'],
+        ['reports.index', 'Bilans', 'book', 'reports.*'],
         ['import.create', 'Importer un relevé', 'upload', 'import.*'],
         ['settings', 'Réglages', 'settings', 'settings'],
     ];
@@ -70,7 +74,7 @@
             <a href="{{ route('transactions.index') }}" class="{{ request()->routeIs('transactions.*') ? 'is-active' : '' }}"><x-icon name="wallet" /> Mouvements</a>
             <button type="button" class="fab" data-open-sheet="money-add"><span class="fab-circle"><x-icon name="plus" /></span> Ajouter</button>
             <a href="{{ route('goals.index') }}" class="{{ request()->routeIs('goals.*') ? 'is-active' : '' }}"><x-icon name="target" /> Objectifs</a>
-            <button type="button" data-open-sheet="sheet-more" class="{{ request()->routeIs('accounts.*', 'categories.*', 'recurrings.*', 'reports.*', 'import.*', 'settings') ? 'is-active' : '' }}"><x-icon name="menu" /> Plus</button>
+            <button type="button" data-open-sheet="sheet-more" class="{{ request()->routeIs('accounts.*', 'categories.*', 'recurrings.*', 'calendar', 'trends', 'purchases.*', 'loans.*', 'reports.*', 'import.*', 'settings') ? 'is-active' : '' }}"><x-icon name="menu" /> Plus</button>
         </nav>
 
         <dialog class="sheet" id="sheet-more" aria-labelledby="sheet-more-title">

@@ -62,6 +62,7 @@
         <h3 style="margin-top:1.25rem">Alertes</h3>
         <label class="check"><input type="checkbox" name="alerts_enabled" value="1" @checked($alertsEnabled)> <span>Me prévenir quand un budget du mois est dépassé, ou qu'un compte passe sous son seuil <span class="muted small">(seuil à régler sur chaque compte)</span></span></label>
         <label class="check" style="margin-top:.5rem"><input type="checkbox" name="alerts_budget_warning" value="1" @checked($alertsBudgetWarning)> <span>Aussi quand un budget atteint 80 %</span></label>
+        <label class="check" style="margin-top:.5rem"><input type="checkbox" name="alerts_reminders" value="1" @checked($alertsReminders)> <span>Rappels : une garantie se termine dans le mois, un remboursement est attendu</span></label>
         <label class="check" style="margin-top:.5rem"><input type="checkbox" name="push_amounts" value="1" @checked($pushAmounts)> <span>Montrer les montants dans les notifications <span class="muted small">(visibles sur l'écran verrouillé du téléphone)</span></span></label>
         <div class="form-actions"><button class="btn" type="submit">Enregistrer</button></div>
     </form>

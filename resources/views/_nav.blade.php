@@ -3,11 +3,15 @@
     $tabs = [
         ['dashboard', 'Résumé', 'dashboard'],
         ['transactions.index', 'Mouvements', 'transactions.*'],
+        ['calendar', 'Calendrier', 'calendar'],
         ['accounts.index', 'Comptes', 'accounts.*'],
         ['categories.index', 'Budgets', 'categories.*'],
         ['goals.index', 'Objectifs', 'goals.*'],
         ['recurrings.index', 'Fixes', 'recurrings.*'],
+        ['trends', 'Tendances', 'trends'],
         ['reports.index', 'Bilans', 'reports.*'],
+        ['purchases.index', 'Garanties', 'purchases.*'],
+        ['loans.index', 'Qui me doit', 'loans.*'],
     ];
 @endphp
 <nav class="tabs money-tabs" aria-label="Pages">

@@ -54,6 +54,7 @@ class SettingsController extends Controller
             'alertsEnabled' => (bool) $this->settings->get('alerts.enabled', true),
             'lockOnLeave' => $this->lock->locksOnLeave(),
             'alertsBudgetWarning' => (bool) $this->settings->get('alerts.budget_warning', true),
+            'alertsReminders' => (bool) $this->settings->get('alerts.reminders', true),
         ]);
     }
 
@@ -74,6 +75,7 @@ class SettingsController extends Controller
             'alerts.enabled' => $request->boolean('alerts_enabled'),
             'argent.lock_on_leave' => $request->boolean('lock_on_leave'),
             'alerts.budget_warning' => $request->boolean('alerts_budget_warning'),
+            'alerts.reminders' => $request->boolean('alerts_reminders'),
         ]);
         $this->lock->unlock($request);
 

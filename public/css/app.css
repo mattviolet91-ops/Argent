@@ -987,3 +987,87 @@ details > summary.btn::-webkit-details-marker { display: none; }
 .goal-ring .ring-icon { position: absolute; top: 26px; left: 0; right: 0; display: flex; justify-content: center; color: #0EA5E9; }
 .goal-ring .ring-icon .icon { width: 28px; height: 28px; }
 .goal-ring .ring-percent { position: absolute; top: 60px; left: 0; right: 0; text-align: center; font-family: var(--font-heading); font-weight: 700; font-size: 1.25rem; }
+
+/* Calendrier */
+.cal-head { display: flex; align-items: center; gap: .5rem; margin: .25rem 0 1rem; }
+.cal-head h1 { margin: 0; flex: 1; text-align: center; font-size: 1.375rem; }
+.cal-card { padding: .5rem; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.cal-dow { text-align: center; font-size: .6875rem; font-weight: 600; color: var(--text-muted); padding: .25rem 0; text-transform: uppercase; letter-spacing: .02em; }
+.cal-day {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-height: 3.75rem; padding: .25rem .25rem .375rem;
+  border-radius: 8px; color: var(--text); text-decoration: none; overflow: hidden; border: 1px solid transparent;
+  background: color-mix(in srgb, var(--danger) calc(var(--heat, 0) * 26%), var(--surface-2));
+}
+.cal-day:hover { border-color: var(--brand-accent); }
+.cal-day.is-empty { background: transparent; }
+.cal-day.is-future { background: var(--surface); border: 1px dashed var(--border); }
+.cal-day.is-today { border: 2px solid var(--brand-accent); }
+.cal-day.is-selected { box-shadow: 0 0 0 2px var(--accent-strong) inset; }
+.cal-num { font-size: .8125rem; font-weight: 700; line-height: 1.1; }
+.cal-day.is-today .cal-num { color: var(--accent-strong); }
+.cal-out, .cal-in { font-size: .6875rem; font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: clip; }
+.cal-out { color: var(--danger); }
+.cal-in { color: var(--success); }
+.cal-dots { position: absolute; right: 4px; top: 5px; display: flex; gap: 2px; }
+.cal-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--brand-accent); }
+.cal-legend { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin: .625rem .25rem 0; }
+.cal-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; }
+.cal-key.is-out { background: color-mix(in srgb, var(--danger) 26%, var(--surface-2)); }
+.cal-key.is-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--brand-accent); margin-left: .5rem; }
+.cal-key.is-now { background: var(--brand-accent); }
+.cal-key.is-usual { background: var(--border); margin-left: .5rem; }
+.cal-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; text-decoration: none; }
+.cal-line:hover { text-decoration: underline; }
+@media (min-width: 640px) {
+  .cal-grid { gap: 6px; }
+  .cal-day { min-height: 5.25rem; padding: .375rem .5rem; }
+  .cal-num { font-size: .9375rem; }
+  .cal-out, .cal-in { font-size: .8125rem; }
+  .cal-dots i { width: 7px; height: 7px; }
+}
+
+/* Tendances */
+.trend-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .75rem; }
+.trend-list li { display: flex; gap: .625rem; align-items: flex-start; }
+.trend-list .small { display: block; margin-top: .125rem; }
+.trend-arrow { flex: none; width: 1.75rem; height: 1.75rem; border-radius: 50%; display: grid; place-items: center; font-size: .75rem; }
+.trend-list .is-up .trend-arrow { background: var(--danger-soft); color: var(--danger); }
+.trend-list .is-down .trend-arrow { background: var(--success-soft); color: var(--success); }
+.trend-table { list-style: none; margin: 0; padding: 0; }
+.trend-table li { padding: .625rem 0; border-bottom: 1px solid var(--border); }
+.trend-table li:last-child { border-bottom: 0; }
+.trend-row-head { display: flex; justify-content: space-between; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+.trend-row-head a { color: inherit; font-weight: 600; }
+.trend-bars { display: grid; gap: 3px; margin: .375rem 0 .25rem; }
+.trend-bars span { display: block; height: 7px; border-radius: 999px; }
+.trend-usual { background: var(--border); }
+
+/* Garanties */
+.purchase-photo { display: block; max-width: 100%; max-height: 420px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); }
+.purchase-price { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.icon-inline { width: 1em; height: 1em; vertical-align: -2px; }
+.list-main .purchase-meta { white-space: normal; }
+
+/* Qui me doit quoi */
+.loan-avatar { background: var(--brand-accent); font-size: 1rem; }
+.loan-avatar-lg { width: 3.5rem; height: 3.5rem; font-size: 1.5rem; }
+.loan-hero { display: flex; gap: 1rem; align-items: center; }
+.loan-balance { margin: 0; font-size: 1.125rem; }
+.loan-entry-actions { display: flex; align-items: center; gap: .25rem; flex: none; }
+.loan-entry-actions form { margin: 0; }
+.loan-balance strong { font-size: 1.5rem; margin-left: .25rem; }
+.loan-types { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+.loan-type { display: flex; align-items: center; gap: .5rem; padding: .625rem .75rem; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: .875rem; line-height: 1.25; }
+.loan-type:has(input:checked) { border-color: var(--brand-accent); background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+
+/* Abonnements repérés */
+.suggest-card { border-left: 4px solid var(--brand-accent); }
+.suggest-list { list-style: none; margin: 0; padding: 0; }
+.suggest-list li { padding: .75rem 0; border-top: 1px solid var(--border); }
+.suggest-form { display: grid; grid-template-columns: 1fr auto; gap: .5rem .75rem; align-items: center; }
+.suggest-main { min-width: 0; display: flex; flex-direction: column; gap: .25rem; }
+.suggest-label { font-weight: 600; padding: .375rem .5rem; border: 1px solid transparent; border-radius: 8px; background: var(--surface-2); color: var(--text); width: 100%; font: inherit; }
+.suggest-label:focus { border-color: var(--brand-accent); outline: none; background: var(--surface); }
+.suggest-amount { font-variant-numeric: tabular-nums; }
+.suggest-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .5rem; }

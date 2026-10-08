@@ -2,6 +2,8 @@
 
 @php
     $fromQuotes = $transaction->source === 'devis';
+    $loan = $transaction->source === 'loan' ? \App\Models\MoneyLoanEntry::query()->where('transaction_id', $transaction->id)->with('person')->first() : null;
+    $locked = $fromQuotes || $transaction->source === 'loan';
     $type = $transaction->amount >= 0 ? 'income' : 'expense';
 @endphp
 
@@ -10,11 +12,14 @@
 
     <div class="card">
         <div class="card-head">
-            <h2>{{ $transaction->isTransfer() ? 'Virement' : ($type === 'income' ? 'Revenu' : 'Dépense') }}</h2>
+            <h2>{{ $loan ? $loan->label() : ($transaction->isTransfer() ? 'Virement' : ($type === 'income' ? 'Revenu' : 'Dépense')) }}</h2>
             <span class="badge">{{ \App\Models\MoneyTransaction::SOURCES[$transaction->source] ?? '' }}</span>
         </div>
         @if ($fromQuotes)
             <div class="alert alert-info">Vient de l'app de devis (paiement ou frais) : le montant, la date et le compte se changent là-bas. Ici, vous pouvez changer la catégorie, le libellé et la note.</div>
+        @endif
+        @if ($loan)
+            <div class="alert alert-info">Noté depuis « Qui me doit quoi » : le montant et la date se changent sur la fiche de <a href="{{ route('loans.show', $loan->person_id) }}">{{ $loan->person?->name }}</a>. Ni gagné, ni dépensé.</div>
         @endif
         @if ($transaction->isTransfer() && $peer)
             <p class="muted small">{{ $transaction->amount < 0 ? 'Vers' : 'Depuis' }} « {{ $peer->account?->name }} ». Les deux côtés du virement sont modifiés ensemble.</p>
@@ -23,7 +28,7 @@
         <form method="POST" action="{{ route('transactions.update', $transaction) }}" data-money-switch="type">
             @csrf
             @method('PUT')
-            @unless ($fromQuotes || $transaction->isTransfer())
+            @unless ($locked || $transaction->isTransfer())
                 <div class="type-switch two" role="radiogroup" aria-label="Type">
                     <label><input type="radio" name="type" value="expense" @checked(old('type', $type) === 'expense')> Dépense</label>
                     <label><input type="radio" name="type" value="income" @checked(old('type', $type) === 'income')> Revenu</label>
@@ -32,7 +37,7 @@
                 <input type="hidden" name="type" value="{{ $type }}">
             @endunless
             <div class="form-grid cols-2">
-                @unless ($fromQuotes)
+                @unless ($locked)
                     <div class="field @error('amount') has-error @enderror">
                         <label for="amount">Montant (€)</label>
                         <input id="amount" class="amount-input" type="text" name="amount" value="{{ old('amount', \App\Support\Money::format(abs($transaction->amount), false)) }}" inputmode="decimal" required>
@@ -64,6 +69,10 @@
             <div class="form-actions"><button class="btn" type="submit">Enregistrer</button></div>
         </form>
     </div>
+
+    @if (! $transaction->isTransfer() && $transaction->amount < 0)
+        <p style="margin-top:1rem"><a class="btn btn-secondary btn-sm" href="{{ route('purchases.index', ['mouvement' => $transaction->id]) }}"><x-icon name="receipt" /> Garder la facture et la garantie de cet achat</a></p>
+    @endif
 
     @unless ($fromQuotes)
         <form method="POST" action="{{ route('transactions.destroy', $transaction) }}" data-confirm="Supprimer ce mouvement{{ $transaction->isTransfer() ? ' (les deux côtés du virement)' : '' }} ?" style="margin-top:1rem">

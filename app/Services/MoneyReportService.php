@@ -86,6 +86,11 @@ class MoneyReportService
         $body = $this->settings->get('argent.push_amounts', false)
             ? $period.' : +'.Money::plain($data['all']['income']).' entrés, −'.Money::plain($data['all']['expense']).' sortis ('.($data['all']['net'] >= 0 ? '+' : '').Money::plain($data['all']['net']).').'
             : $period.' : votre bilan est prêt.';
+        // Une hausse marquante du mois (en %, jamais de montant) : « 30 % de plus en restaurants… ».
+        $trend = app(MoneyTrendService::class)->notable('all')->firstWhere('up', true);
+        if ($trend) {
+            $body .= ' '.$trend['sentence'];
+        }
 
         app(PushService::class)->send('Bilan de la semaine', $body, route('reports.show', $report), $this->lock->ownerId());
     }

@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\ReadsMoneyInput;
 use App\Models\MoneyCategory;
 use App\Models\MoneyRecurring;
+use App\Models\MoneyTransaction;
 use App\Services\MoneyAlertService;
+use App\Services\MoneySubscriptionService;
 use App\Services\MoneySyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -18,7 +21,7 @@ class RecurringController extends Controller
 {
     use ReadsMoneyInput;
 
-    public function index(): View
+    public function index(MoneySubscriptionService $subscriptions): View
     {
         $recurrings = MoneyRecurring::query()->with(['account', 'toAccount', 'category'])->orderByDesc('active')->orderBy('next_on')->get();
         $active = $recurrings->where('active', true);
@@ -28,6 +31,7 @@ class RecurringController extends Controller
             'monthlyOut' => (int) -$active->filter(fn ($r) => ! $r->isTransfer() && $r->amount < 0)->sum(fn ($r) => $r->monthlyAmount()),
             'monthlyIn' => (int) $active->filter(fn ($r) => ! $r->isTransfer() && $r->amount > 0)->sum(fn ($r) => $r->monthlyAmount()),
             'monthlySaved' => (int) $active->filter(fn ($r) => $r->isTransfer())->sum(fn ($r) => $r->monthlyAmount()),
+            'suggestions' => $subscriptions->suggestions(),
             'accountOptions' => $this->accountOptions(),
             'categoryOptions' => $this->categoryOptions(),
         ]);
@@ -55,6 +59,44 @@ class RecurringController extends Controller
         app(MoneyAlertService::class)->check();
 
         return redirect()->route('recurrings.index')->with('status', 'Enregistré.');
+    }
+
+    /** Abonnement repéré dans les relevés : ajouté aux Fixes (ses anciens prélèvements y sont rattachés). */
+    public function adopt(Request $request, MoneySubscriptionService $subscriptions): RedirectResponse
+    {
+        $data = $request->validate([
+            'key' => ['required', 'string', 'max:200'],
+            'sub_label' => ['required', 'string', 'max:160'],
+        ], [], ['sub_label' => 'libellé']);
+        $data['label'] = $data['sub_label'];
+        $found = $subscriptions->find($data['key']);
+        if (! $found) {
+            return redirect()->route('recurrings.index')->withErrors(['key' => 'Cet abonnement n\'est plus proposé (déjà ajouté ou ignoré).']);
+        }
+
+        DB::transaction(function () use ($found, $data) {
+            $recurring = MoneyRecurring::query()->create([
+                'label' => $data['label'],
+                'amount' => $found['amount'],
+                'account_id' => $found['account']->id,
+                'category_id' => $found['category_id'],
+                'frequency' => $found['frequency'],
+                'next_on' => $found['next_on']->toDateString(),
+                'active' => true,
+            ]);
+            MoneyTransaction::query()->whereIn('id', $found['ids'])->update(['recurring_id' => $recurring->id]);
+        });
+
+        return redirect()->route('recurrings.index')->with('status', '« '.$data['label'].' » ajouté aux Fixes : prochain prélèvement prévu le '.$found['next_on']->format('d/m/Y').'.');
+    }
+
+    /** « Ce n'est pas un abonnement » : plus proposé. */
+    public function dismiss(Request $request, MoneySubscriptionService $subscriptions): RedirectResponse
+    {
+        $key = (string) $request->validate(['key' => ['required', 'string', 'max:200']])['key'];
+        $subscriptions->dismiss($key);
+
+        return redirect()->route('recurrings.index')->with('status', 'Compris, il ne sera plus proposé.');
     }
 
     public function destroy(MoneyRecurring $recurring): RedirectResponse

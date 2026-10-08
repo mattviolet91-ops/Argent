@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\ReadsMoneyInput;
 use App\Http\Controllers\Concerns\ResolvesPeriod;
 use App\Models\MoneyGoal;
+use App\Models\MoneyPerson;
 use App\Models\MoneyTransaction;
 use App\Services\MoneyAlertService;
 use App\Services\MoneyStatsService;
+use App\Services\MoneySubscriptionService;
 use App\Services\MoneySyncService;
+use App\Services\MoneyTrendService;
 use App\Services\Settings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -25,7 +28,7 @@ class DashboardController extends Controller
         'annee' => 'Année',
     ];
 
-    public function __invoke(Request $request, MoneyStatsService $stats, MoneySyncService $sync, Settings $settings): View
+    public function __invoke(Request $request, MoneyStatsService $stats, MoneySyncService $sync, Settings $settings, MoneyTrendService $trends, MoneySubscriptionService $subscriptions): View
     {
         $scope = $this->scope($request);
         [$period, $from, $to] = $this->period($request, 'mois');
@@ -36,6 +39,8 @@ class DashboardController extends Controller
         $accounts = $stats->accounts($scope);
         $quotes = $scope !== 'perso' ? $stats->quotes($from, $to) : null;
         $lastSync = $settings->get('argent.last_sync_at');
+        $people = MoneyPerson::query()->whereNull('archived_at')->withSum('entries', 'amount')->get()
+            ->filter(fn (MoneyPerson $p) => $p->balance() !== 0)->sortByDesc(fn (MoneyPerson $p) => abs($p->balance()))->values();
 
         return view('dashboard', [
             'scope' => $scope,
@@ -59,6 +64,11 @@ class DashboardController extends Controller
             'lastSync' => $lastSync ? Carbon::parse($lastSync) : null,
             'devisUrl' => rtrim((string) $settings->get('devis.url', ''), '/'),
             'alerts' => app(MoneyAlertService::class)->current(),
+            'trends' => $trends->notable($scope, limit: 3),
+            'subscriptions' => $subscriptions->count(),
+            'people' => $people,
+            'owedToMe' => (int) $people->sum(fn (MoneyPerson $p) => max(0, $p->balance())),
+            'iOwe' => (int) $people->sum(fn (MoneyPerson $p) => max(0, -$p->balance())),
             'latest' => MoneyTransaction::query()->inScope($scope)->with(['account', 'category'])
                 ->whereDate('occurred_on', '<=', today())->latest('occurred_on')->latest('id')->limit(8)->get(),
             'accountOptions' => $this->accountOptions(),

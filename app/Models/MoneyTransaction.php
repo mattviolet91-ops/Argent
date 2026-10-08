@@ -18,6 +18,7 @@ class MoneyTransaction extends Model
         'import' => 'Relevé',
         'devis' => 'App de devis',
         'recurring' => 'Dépense fixe',
+        'loan' => 'Prêt',
     ];
 
     protected $fillable = [

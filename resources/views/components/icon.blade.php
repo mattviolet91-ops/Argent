@@ -25,6 +25,8 @@
         'map' => '<path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/>',
         'trash' => '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/><path d="M10 11v6M14 11v6"/>',
         'chevron-left' => '<path d="m15 5-7 7 7 7"/>',
+        'chevron-right' => '<path d="m9 5 7 7-7 7"/>',
+        'trend' => '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
         'chevron-up' => '<path d="m6 15 6-6 6 6"/>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"/>',
         'copy' => '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',

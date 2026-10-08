@@ -19,6 +19,16 @@ envoie chaque lundi les paiements reçus et les frais des chantiers.
   mensuels, objectifs (épargne, encaissé, gain, plafond de dépenses).
 - Dépenses et revenus fixes notés tout seuls, solde prévu en fin de mois.
 - Import de relevé bancaire CSV ou OFX (doublons écartés, catégories apprises).
+- Abonnements repérés tout seuls dans les relevés (même commerçant, même montant,
+  rythme régulier), proposés pour les Fixes.
+- Tendances : « ce mois-ci, vous dépensez 30 % de plus en restaurants que
+  d'habitude » (comparé aux 3 mois d'avant, aux mêmes jours).
+- Calendrier : dépenses de chaque jour, échéances à venir (fixes, garanties,
+  remboursements).
+- Garanties et factures d'achat (photo ou PDF gardés en privé), rappel un mois
+  avant la fin de la garantie.
+- « Qui me doit quoi » : prêts, avances, emprunts et remboursements par personne,
+  rappel si un remboursement tarde.
 - Lien avec l'app de devis : paiements et frais copiés chaque lundi (clé en lecture
   seule), bilan de la semaine figé et notification.
 - Mode discret (montants floutés), export Excel (CSV), sauvegarde chaque nuit,

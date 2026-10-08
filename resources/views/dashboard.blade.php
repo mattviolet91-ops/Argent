@@ -36,6 +36,12 @@
         </div>
     @endif
 
+    @if ($subscriptions)
+        <a class="alert alert-info money-alert" href="{{ route('recurrings.index') }}#abonnements">
+            <strong>{{ $subscriptions }} abonnement{{ $subscriptions > 1 ? 's' : '' }} repéré{{ $subscriptions > 1 ? 's' : '' }}</strong> dans vos relevés : {{ $subscriptions > 1 ? 'les ' : 'l\'' }}ajouter aux Fixes ?
+        </a>
+    @endif
+
     @if ($totals['income'] === 0 && $totals['expense'] === 0 && $latest->isEmpty())
         <div class="card getting-started" style="margin-bottom:1rem">
             <h2>Bienvenue dans votre app Argent</h2>
@@ -128,6 +134,37 @@
         </div>
     @endif
 
+    @if ($trends->isNotEmpty() || $people->isNotEmpty())
+        <div class="grid grid-2" style="margin-top:1rem">
+            @if ($trends->isNotEmpty())
+                <div class="card">
+                    <div class="card-head"><h2>Tendances du mois</h2><a class="small" href="{{ route('trends') }}">Détails</a></div>
+                    <ul class="trend-list">
+                        @foreach ($trends as $row)
+                            <li class="{{ $row['up'] ? 'is-up' : 'is-down' }}">
+                                <span class="trend-arrow" aria-hidden="true">{{ $row['up'] ? '▲' : '▼' }}</span>
+                                <span>{{ $row['sentence'] }} <span class="small muted m-amt">{{ Money::format($row['current']) }} contre {{ Money::format($row['usual']) }} à cette date.</span></span>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+            @if ($people->isNotEmpty())
+                <div class="card">
+                    <div class="card-head"><h2>Qui me doit quoi</h2><a class="small" href="{{ route('loans.index') }}">Tout voir</a></div>
+                    <ul class="stat-list">
+                        @foreach ($people->take(4) as $person)
+                            @php $owed = $person->balance(); @endphp
+                            <li><a href="{{ route('loans.show', $person) }}">{{ $person->name }} <span class="small muted">· {{ $owed > 0 ? 'vous doit' : 'vous lui devez' }}</span>@if ($person->isOverdue()) <span class="badge badge-danger">en retard</span>@endif</a>
+                                <strong class="{{ $owed > 0 ? 'm-pos' : 'm-neg' }}"><x-money-amount :value="abs($owed)" /></strong></li>
+                        @endforeach
+                    </ul>
+                    <p class="money-note">On vous doit <strong><x-money-amount :value="$owedToMe" /></strong>@if ($iOwe) · vous devez <strong><x-money-amount :value="$iOwe" /></strong>@endif</p>
+                </div>
+            @endif
+        </div>
+    @endif
+
     <div class="grid grid-2" style="margin-top:1rem">
         @if ($scope !== 'perso' && ! $quotes)
             <div class="card">
@@ -162,7 +199,7 @@
         @endif
 
         <div class="card">
-            <div class="card-head"><h2>D'ici la fin du mois</h2><a class="small" href="{{ route('recurrings.index') }}">Dépenses fixes</a></div>
+            <div class="card-head"><h2>D'ici la fin du mois</h2><a class="small" href="{{ route('calendar') }}">Calendrier</a></div>
             @if ($upcoming->isEmpty())
                 <p class="muted" style="margin:0">Rien de prévu. Ajoutez vos dépenses fixes (loyer, abonnements, crédit…) pour voir venir.</p>
             @else

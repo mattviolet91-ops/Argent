@@ -62,6 +62,27 @@ Route::middleware('auth')->group(function () {
         Route::put('/fixes/{recurring}', [Controllers\RecurringController::class, 'update'])->whereNumber('recurring')->name('recurrings.update');
         Route::delete('/fixes/{recurring}', [Controllers\RecurringController::class, 'destroy'])->whereNumber('recurring')->name('recurrings.destroy');
 
+        Route::post('/fixes/abonnements', [Controllers\RecurringController::class, 'adopt'])->name('recurrings.adopt');
+        Route::post('/fixes/abonnements/ignorer', [Controllers\RecurringController::class, 'dismiss'])->name('recurrings.dismiss');
+
+        Route::get('/tendances', Controllers\TrendController::class)->name('trends');
+        Route::get('/calendrier', Controllers\CalendarController::class)->name('calendar');
+
+        Route::get('/garanties', [Controllers\PurchaseController::class, 'index'])->name('purchases.index');
+        Route::post('/garanties', [Controllers\PurchaseController::class, 'store'])->middleware('throttle:30,1')->name('purchases.store');
+        Route::get('/garanties/{purchase}', [Controllers\PurchaseController::class, 'show'])->whereNumber('purchase')->name('purchases.show');
+        Route::put('/garanties/{purchase}', [Controllers\PurchaseController::class, 'update'])->whereNumber('purchase')->middleware('throttle:30,1')->name('purchases.update');
+        Route::delete('/garanties/{purchase}', [Controllers\PurchaseController::class, 'destroy'])->whereNumber('purchase')->name('purchases.destroy');
+        Route::get('/garanties/{purchase}/facture', [Controllers\PurchaseController::class, 'file'])->whereNumber('purchase')->name('purchases.file');
+
+        Route::get('/prets', [Controllers\LoanController::class, 'index'])->name('loans.index');
+        Route::post('/prets', [Controllers\LoanController::class, 'store'])->name('loans.store');
+        Route::get('/prets/{person}', [Controllers\LoanController::class, 'show'])->whereNumber('person')->name('loans.show');
+        Route::put('/prets/{person}', [Controllers\LoanController::class, 'update'])->whereNumber('person')->name('loans.update');
+        Route::delete('/prets/{person}', [Controllers\LoanController::class, 'destroy'])->whereNumber('person')->name('loans.destroy');
+        Route::post('/prets/{person}/lignes', [Controllers\LoanController::class, 'entry'])->whereNumber('person')->name('loans.entry');
+        Route::delete('/prets/lignes/{entry}', [Controllers\LoanController::class, 'destroyEntry'])->whereNumber('entry')->name('loans.entry.destroy');
+
         Route::get('/releve', [Controllers\ImportController::class, 'create'])->name('import.create');
         Route::post('/releve/apercu', [Controllers\ImportController::class, 'preview'])->middleware('throttle:20,1')->name('import.preview');
         Route::get('/releve/apercu', [Controllers\ImportController::class, 'show'])->name('import.show');
