@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="robots" content="noindex, nofollow">
-    <meta name="theme-color" content="#1E7F4F">
+    <meta name="theme-color" content="#2563EB">
     <meta name="apple-mobile-web-app-title" content="Argent">
     <title>{{ isset($title) ? $title.' · ' : '' }}Argent</title>
     <link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
