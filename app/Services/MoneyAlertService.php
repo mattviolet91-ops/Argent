@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\MoneyAccount;
+use App\Models\MoneyGoal;
 use App\Support\Money;
 
 /**
@@ -82,8 +83,12 @@ class MoneyAlertService
     /** Envoie les nouvelles alertes en notification. Retourne le nombre envoyé. */
     public function check(): int
     {
-        if (! $this->enabled() || ! $this->lock->isConfigured()) {
+        if (! $this->lock->isConfigured()) {
             return 0;
+        }
+        // Objectif atteint : toujours signalé (ce n'est pas une alerte).
+        if (! $this->enabled()) {
+            return $this->goalsReached(app(PushService::class));
         }
 
         $month = today()->format('Y-m');
@@ -119,6 +124,22 @@ class MoneyAlertService
             $push->send($alert['title'], $alert['text'].($showAmounts ? ' '.$alert['details'] : ''), $alert['url'], $this->lock->ownerId());
         }
 
-        return count($new);
+        return count($new) + $this->goalsReached($push);
+    }
+
+    /** Objectifs d'épargne qui viennent d'atteindre leur montant : bravo (une seule fois). */
+    private function goalsReached(PushService $push): int
+    {
+        $count = 0;
+        foreach (MoneyGoal::query()->where('kind', 'epargne')->whereNull('achieved_at')->whereNull('archived_at')->with('account')->get() as $goal) {
+            if ($this->stats->goal($goal)['percent'] < 100) {
+                continue;
+            }
+            $goal->update(['achieved_at' => now()]);
+            $push->send('Objectif atteint 🎉', '« '.$goal->name.' » : le montant est réuni. Bravo !', route('goals.show', $goal), $this->lock->ownerId());
+            $count++;
+        }
+
+        return $count;
     }
 }

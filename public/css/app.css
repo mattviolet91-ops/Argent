@@ -972,3 +972,18 @@ details > summary.btn::-webkit-details-marker { display: none; }
 .faceid-btn { min-height: 3.25rem; font-size: 1.0625rem; }
 .faceid-btn .icon { width: 1.5rem; height: 1.5rem; }
 .lock-screen details > summary { cursor: pointer; font-weight: 600; }
+.goal-card { display: block; }
+.goal-title { display: flex; align-items: center; gap: .75rem; }
+.goal-hero { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+.goal-hero h1 { margin: 0 0 .25rem; }
+.goal-hero-text { flex: 1; min-width: 12rem; }
+.goal-amounts { margin: 0 0 .25rem; font-size: 1.125rem; }
+.goal-amounts strong { font-family: var(--font-heading); font-size: 1.5rem; }
+.goal-ring { position: relative; width: 120px; height: 120px; flex: none; }
+.goal-ring svg { width: 120px; height: 120px; display: block; }
+.goal-ring .ring-track { fill: none; stroke: var(--surface-2); stroke-width: 12; }
+.goal-ring .ring-fill { fill: none; stroke: #0EA5E9; stroke-width: 12; stroke-linecap: round; transition: stroke-dasharray .6s ease; }
+.goal-ring .ring-fill.is-done { stroke: var(--success); }
+.goal-ring .ring-icon { position: absolute; top: 26px; left: 0; right: 0; display: flex; justify-content: center; color: #0EA5E9; }
+.goal-ring .ring-icon .icon { width: 28px; height: 28px; }
+.goal-ring .ring-percent { position: absolute; top: 60px; left: 0; right: 0; text-align: center; font-family: var(--font-heading); font-weight: 700; font-size: 1.25rem; }

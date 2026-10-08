@@ -20,13 +20,14 @@ class RecurringController extends Controller
 
     public function index(): View
     {
-        $recurrings = MoneyRecurring::query()->with(['account', 'category'])->orderByDesc('active')->orderBy('next_on')->get();
+        $recurrings = MoneyRecurring::query()->with(['account', 'toAccount', 'category'])->orderByDesc('active')->orderBy('next_on')->get();
         $active = $recurrings->where('active', true);
 
         return view('recurrings.index', [
             'recurrings' => $recurrings,
-            'monthlyOut' => (int) -$active->filter(fn ($r) => $r->amount < 0)->sum(fn ($r) => $r->monthlyAmount()),
-            'monthlyIn' => (int) $active->filter(fn ($r) => $r->amount > 0)->sum(fn ($r) => $r->monthlyAmount()),
+            'monthlyOut' => (int) -$active->filter(fn ($r) => ! $r->isTransfer() && $r->amount < 0)->sum(fn ($r) => $r->monthlyAmount()),
+            'monthlyIn' => (int) $active->filter(fn ($r) => ! $r->isTransfer() && $r->amount > 0)->sum(fn ($r) => $r->monthlyAmount()),
+            'monthlySaved' => (int) $active->filter(fn ($r) => $r->isTransfer())->sum(fn ($r) => $r->monthlyAmount()),
             'accountOptions' => $this->accountOptions(),
             'categoryOptions' => $this->categoryOptions(),
         ]);
@@ -68,15 +69,25 @@ class RecurringController extends Controller
     {
         $data = $request->validate([
             'label' => ['required', 'string', 'max:160'],
-            'type' => ['required', Rule::in(['expense', 'income'])],
+            'type' => ['required', Rule::in(['expense', 'income', 'transfer'])],
             'account_id' => ['required', 'integer', Rule::exists('money_accounts', 'id')],
+            'to_account_id' => ['nullable', 'required_if:type,transfer', 'integer', 'different:account_id', Rule::exists('money_accounts', 'id')],
             'category_id' => ['nullable', 'integer', Rule::exists('money_categories', 'id')],
             'frequency' => ['required', Rule::in(array_keys(MoneyRecurring::FREQUENCIES))],
             'next_on' => ['required', 'date', 'after_or_equal:'.today()->subYear()->toDateString()],
-        ], ['next_on.after_or_equal' => 'Choisissez une date de moins d\'un an.'], ['label' => 'libellé', 'next_on' => 'prochaine date']);
+        ], [
+            'next_on.after_or_equal' => 'Choisissez une date de moins d\'un an.',
+            'to_account_id.required_if' => 'Choisissez le compte qui reçoit l\'argent.',
+            'to_account_id.different' => 'Choisissez deux comptes différents.',
+        ], ['label' => 'libellé', 'next_on' => 'prochaine date']);
         $amount = $this->amount($request, 'amount');
         if (! empty($data['category_id']) && MoneyCategory::query()->whereKey($data['category_id'])->value('type') !== $data['type']) {
             throw ValidationException::withMessages(['category_id' => $data['type'] === 'expense' ? 'Choisissez une catégorie de dépense.' : 'Choisissez une catégorie de revenu.']);
+        }
+        if ($data['type'] === 'transfer') {
+            $data['category_id'] = null;
+        } else {
+            $data['to_account_id'] = null;
         }
         $data['amount'] = $data['type'] === 'expense' ? -$amount : $amount;
         unset($data['type']);

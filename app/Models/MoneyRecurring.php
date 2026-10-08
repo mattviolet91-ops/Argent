@@ -16,7 +16,7 @@ class MoneyRecurring extends Model
         'annuel' => 'Chaque année',
     ];
 
-    protected $fillable = ['label', 'amount', 'account_id', 'category_id', 'frequency', 'next_on', 'active'];
+    protected $fillable = ['label', 'amount', 'account_id', 'to_account_id', 'category_id', 'frequency', 'next_on', 'active'];
 
     protected function casts(): array
     {
@@ -26,6 +26,29 @@ class MoneyRecurring extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(MoneyAccount::class, 'account_id');
+    }
+
+    /** Compte qui reçoit l'argent (versement automatique vers un objectif, épargne…). */
+    public function toAccount(): BelongsTo
+    {
+        return $this->belongsTo(MoneyAccount::class, 'to_account_id');
+    }
+
+    public function isTransfer(): bool
+    {
+        return $this->to_account_id !== null;
+    }
+
+    /** Effet sur le solde des comptes de cette vue (perso, pro ou tout). */
+    public function effectOn(string $scope): int
+    {
+        if (! $this->isTransfer()) {
+            return $scope === 'all' || $this->account?->scope === $scope ? $this->amount : 0;
+        }
+        $out = $scope === 'all' || $this->account?->scope === $scope ? -$this->amount : 0;
+        $in = $scope === 'all' || $this->toAccount?->scope === $scope ? $this->amount : 0;
+
+        return $out + $in;
     }
 
     public function category(): BelongsTo

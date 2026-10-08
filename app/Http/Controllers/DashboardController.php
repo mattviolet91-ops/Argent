@@ -52,7 +52,7 @@ class DashboardController extends Controller
             'goals' => MoneyGoal::query()->whereNull('archived_at')->with('account')->orderBy('id')->get()
                 ->map(fn (MoneyGoal $goal) => ['goal' => $goal] + $stats->goal($goal)),
             'upcoming' => $stats->upcoming(today()->endOfMonth())->filter(fn ($item) => $item['date']->isAfter(today()))
-                ->filter(fn ($item) => $scope === 'all' || $item['recurring']->account?->scope === $scope)->take(6),
+                ->filter(fn ($item) => $scope === 'all' || $item['recurring']->account?->scope === $scope || $item['recurring']->toAccount?->scope === $scope)->take(6),
             'forecast' => $stats->endOfMonthForecast($scope),
             'quotes' => $quotes,
             'syncAccount' => $sync->account(),

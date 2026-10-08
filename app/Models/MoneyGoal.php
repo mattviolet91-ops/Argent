@@ -15,6 +15,18 @@ class MoneyGoal extends Model
         'depenses' => 'Ne pas dépasser (dépenses)',
     ];
 
+    /** Icônes proposées pour un objectif d'épargne : clé => [libellé, icône]. */
+    public const ICONS = [
+        'voiture' => ['Voiture', 'car'],
+        'maison' => ['Maison, travaux', 'home'],
+        'voyage' => ['Voyage, vacances', 'plane'],
+        'cadeau' => ['Cadeau, fête', 'gift'],
+        'materiel' => ['Matériel, outillage', 'tool'],
+        'famille' => ['Famille, enfants', 'heart'],
+        'securite' => ['Épargne de précaution', 'shield'],
+        'autre' => ['Autre projet', 'target'],
+    ];
+
     public const PERIODS = [
         'mois' => 'Par mois',
         'annee' => 'Par an',
@@ -26,7 +38,7 @@ class MoneyGoal extends Model
         'pro' => 'Pro',
     ];
 
-    protected $fillable = ['name', 'kind', 'target', 'period', 'scope', 'deadline', 'account_id', 'saved', 'achieved_at', 'archived_at'];
+    protected $fillable = ['name', 'icon', 'kind', 'target', 'period', 'scope', 'deadline', 'account_id', 'saved', 'achieved_at', 'archived_at'];
 
     protected function casts(): array
     {
@@ -44,6 +56,11 @@ class MoneyGoal extends Model
     public function isSaving(): bool
     {
         return $this->kind === 'epargne';
+    }
+
+    public function iconName(): string
+    {
+        return self::ICONS[$this->icon][1] ?? ($this->isSaving() ? 'piggy' : 'target');
     }
 
     public function kindLabel(): string

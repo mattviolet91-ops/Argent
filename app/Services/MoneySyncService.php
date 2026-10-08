@@ -8,6 +8,7 @@ use App\Models\MoneyRecurring;
 use App\Models\MoneyTransaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Lien avec l'app de devis : chaque paiement reçu devient une entrée et
@@ -109,16 +110,26 @@ class MoneySyncService
         foreach (MoneyRecurring::query()->where('active', true)->whereDate('next_on', '<=', $today)->get() as $recurring) {
             $date = $recurring->next_on->copy();
             for ($i = 0; $i < 60 && $date->lte($today); $i++) {
-                MoneyTransaction::query()->create([
-                    'account_id' => $recurring->account_id,
-                    'occurred_on' => $date->toDateString(),
-                    'amount' => $recurring->amount,
-                    'kind' => MoneyTransaction::kindFor($recurring->amount),
-                    'category_id' => $recurring->category_id,
-                    'label' => $recurring->label,
-                    'source' => 'recurring',
-                    'recurring_id' => $recurring->id,
-                ]);
+                if ($recurring->isTransfer()) {
+                    $key = (string) Str::uuid();
+                    foreach ([[$recurring->account_id, -abs($recurring->amount)], [$recurring->to_account_id, abs($recurring->amount)]] as [$accountId, $amount]) {
+                        MoneyTransaction::query()->create([
+                            'account_id' => $accountId, 'occurred_on' => $date->toDateString(), 'amount' => $amount, 'kind' => 'transfer',
+                            'label' => $recurring->label, 'transfer_key' => $key, 'source' => 'recurring', 'recurring_id' => $recurring->id,
+                        ]);
+                    }
+                } else {
+                    MoneyTransaction::query()->create([
+                        'account_id' => $recurring->account_id,
+                        'occurred_on' => $date->toDateString(),
+                        'amount' => $recurring->amount,
+                        'kind' => MoneyTransaction::kindFor($recurring->amount),
+                        'category_id' => $recurring->category_id,
+                        'label' => $recurring->label,
+                        'source' => 'recurring',
+                        'recurring_id' => $recurring->id,
+                    ]);
+                }
                 $created++;
                 $date = $recurring->nextAfter($date);
             }

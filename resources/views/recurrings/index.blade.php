@@ -13,7 +13,7 @@
     <div class="grid money-mini">
         <div class="card kpi"><span class="label">Sorties fixes / mois</span><span class="value m-neg"><x-money-amount :value="$monthlyOut" /></span></div>
         <div class="card kpi"><span class="label">Entrées fixes / mois</span><span class="value m-pos"><x-money-amount :value="$monthlyIn" /></span></div>
-        <div class="card kpi"><span class="label">Reste / mois</span><span class="value"><x-money-amount :value="$monthlyIn - $monthlyOut" signed /></span></div>
+        <div class="card kpi"><span class="label">Reste / mois</span><span class="value"><x-money-amount :value="$monthlyIn - $monthlyOut" signed /></span>@if ($monthlySaved)<span class="delta">dont <x-money-amount :value="$monthlySaved" /> mis de côté</span>@endif</div>
     </div>
 
     @if ($recurrings->isNotEmpty())
@@ -25,9 +25,9 @@
                             <span class="tx-icon" style="background:{{ $recurring->category?->color ?? '#B0BEC5' }}" aria-hidden="true"><x-icon name="repeat" /></span>
                             <span class="list-main">
                                 <strong>{{ $recurring->label }}</strong>
-                                <span class="muted small">{{ $recurring->frequencyLabel() }} · prochain le {{ $recurring->next_on->format('d/m/Y') }} · {{ $recurring->account?->name }}{{ $recurring->active ? '' : ' · en pause' }}</span>
+                                <span class="muted small">{{ $recurring->frequencyLabel() }} · prochain le {{ $recurring->next_on->format('d/m/Y') }} · {{ $recurring->account?->name }}{{ $recurring->isTransfer() ? ' → '.$recurring->toAccount?->name : '' }}{{ $recurring->active ? '' : ' · en pause' }}</span>
                             </span>
-                            <span class="list-meta"><strong><x-money-amount :value="$recurring->amount" signed /></strong></span>
+                            <span class="list-meta"><strong>@if ($recurring->isTransfer())<x-money-amount :value="$recurring->amount" />@else<x-money-amount :value="$recurring->amount" signed />@endif</strong></span>
                         </summary>
                         <form method="POST" action="{{ route('recurrings.update', $recurring) }}" style="margin-top:1rem">
                             @csrf
@@ -46,7 +46,7 @@
     @endif
 
     <details class="card" @if ($errors->any() || $recurrings->isEmpty()) open @endif>
-        <summary><strong>+ Ajouter une dépense ou un revenu fixe</strong></summary>
+        <summary><strong>+ Ajouter une dépense, un revenu ou un virement fixe</strong></summary>
         <form method="POST" action="{{ route('recurrings.store') }}" style="margin-top:1rem">
             @csrf
             @include('recurrings._fields', ['recurring' => null])

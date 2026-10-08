@@ -1,12 +1,13 @@
 {{-- Champs d'une dépense / d'un revenu fixe. $recurring : MoneyRecurring|null --}}
 @php
-    $type = old('type', $recurring && $recurring->amount > 0 ? 'income' : 'expense');
+    $type = old('type', $recurring?->isTransfer() ? 'transfer' : ($recurring && $recurring->amount > 0 ? 'income' : 'expense'));
     $prefix = $recurring ? 'rec-'.$recurring->id.'-' : 'new-rec-';
 @endphp
 <div data-money-switch="type">
-    <div class="type-switch two" role="radiogroup" aria-label="Type">
+    <div class="type-switch" role="radiogroup" aria-label="Type">
         <label><input type="radio" name="type" value="expense" @checked($type === 'expense')> Dépense</label>
         <label><input type="radio" name="type" value="income" @checked($type === 'income')> Revenu</label>
+        <label><input type="radio" name="type" value="transfer" @checked($type === 'transfer')> Virement</label>
     </div>
     <div class="form-grid cols-2">
         <x-field name="label" label="Libellé" :value="$recurring?->label" required maxlength="160" placeholder="ex. Loyer, Netflix, crédit camion, salaire" />
@@ -28,7 +29,17 @@
                 @endforeach
             </select>
         </div>
-        <div class="field @error('category_id') has-error @enderror">
+        <div class="field @error('to_account_id') has-error @enderror" data-when="transfer">
+            <label for="{{ $prefix }}to-account">Vers le compte</label>
+            <select id="{{ $prefix }}to-account" name="to_account_id">
+                <option value="">—</option>
+                @foreach ($accountOptions as $account)
+                    <option value="{{ $account->id }}" @selected((string) old('to_account_id', $recurring?->to_account_id) === (string) $account->id)>{{ $account->name }}</option>
+                @endforeach
+            </select>
+            @error('to_account_id')<span class="error">{{ $message }}</span>@enderror
+        </div>
+        <div class="field @error('category_id') has-error @enderror" data-when="expense income">
             <label for="{{ $prefix }}category">Catégorie</label>
             <select id="{{ $prefix }}category" name="category_id" data-filter-options>
                 <option value="">— Sans catégorie —</option>

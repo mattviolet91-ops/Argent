@@ -21,6 +21,7 @@ class MoneyAccount extends Model
         'bourse' => ['Bourse (PEA, compte-titres)', 'epargne', 'chart'],
         'crypto' => ['Crypto-monnaies', 'epargne', 'crypto'],
         'retraite' => ['Épargne retraite (PER)', 'epargne', 'calendar'],
+        'objectif' => ['Compte d\'un objectif (argent mis de côté pour un projet)', 'epargne', 'target'],
         'carte_credit' => ['Carte de crédit (débit différé)', 'dette', 'card'],
         'credit' => ['Crédit / prêt (immobilier, auto, conso…)', 'dette', 'loan'],
         'autre' => ['Autre', 'autre', 'wallet'],

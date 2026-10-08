@@ -168,7 +168,7 @@
             @else
                 <ul class="stat-list">
                     @foreach ($upcoming as $item)
-                        <li><span>{{ $item['date']->format('d/m') }} · {{ $item['recurring']->label }}</span><strong><x-money-amount :value="$item['recurring']->amount" signed /></strong></li>
+                        <li><span>{{ $item['date']->format('d/m') }} · {{ $item['recurring']->label }}{{ $item['recurring']->isTransfer() ? ' → '.$item['recurring']->toAccount?->name : '' }}</span><strong>@if ($item['recurring']->isTransfer())<x-money-amount :value="$item['recurring']->amount" />@else<x-money-amount :value="$item['recurring']->amount" signed />@endif</strong></li>
                     @endforeach
                 </ul>
             @endif

@@ -49,7 +49,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/objectifs', [Controllers\GoalController::class, 'index'])->name('goals.index');
         Route::post('/objectifs', [Controllers\GoalController::class, 'store'])->name('goals.store');
         Route::put('/objectifs/{goal}', [Controllers\GoalController::class, 'update'])->whereNumber('goal')->name('goals.update');
+        Route::get('/objectifs/{goal}', [Controllers\GoalController::class, 'show'])->whereNumber('goal')->name('goals.show');
         Route::post('/objectifs/{goal}/versement', [Controllers\GoalController::class, 'contribute'])->whereNumber('goal')->name('goals.contribute');
+        Route::post('/objectifs/{goal}/depot', [Controllers\GoalController::class, 'deposit'])->whereNumber('goal')->name('goals.deposit');
+        Route::post('/objectifs/{goal}/retrait', [Controllers\GoalController::class, 'withdraw'])->whereNumber('goal')->name('goals.withdraw');
+        Route::post('/objectifs/{goal}/automatique', [Controllers\GoalController::class, 'automatic'])->whereNumber('goal')->name('goals.automatic');
+        Route::post('/objectifs/{goal}/compte', [Controllers\GoalController::class, 'useAccount'])->whereNumber('goal')->name('goals.account');
         Route::delete('/objectifs/{goal}', [Controllers\GoalController::class, 'destroy'])->whereNumber('goal')->name('goals.destroy');
 
         Route::get('/fixes', [Controllers\RecurringController::class, 'index'])->name('recurrings.index');

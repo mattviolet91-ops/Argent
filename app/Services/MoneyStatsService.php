@@ -145,7 +145,10 @@ class MoneyStatsService
     /**
      * Avancement d'un objectif.
      *
-     * @return array{current: int, target: int, percent: int, status: string, hint: ?string, period: ?string}
+     * Épargne avec un compte : aussi « planned » (dépôts prévus), « monthly_auto » (versements
+     * automatiques par mois), « needed_monthly », « days_left », « projection » et « on_track ».
+     *
+     * @return array<string, mixed>
      */
     public function goal(MoneyGoal $goal): array
     {
@@ -153,14 +156,33 @@ class MoneyStatsService
         $hint = null;
         $periodLabel = null;
 
+        $extra = [];
         if ($goal->isSaving()) {
             $current = $goal->account ? $goal->account->balance() : $goal->saved;
             $left = $goal->target - $current;
+            if ($goal->account) {
+                // Dépôts déjà notés pour plus tard, et versements automatiques vers ce compte.
+                $extra['planned'] = (int) $goal->account->transactions()->whereDate('occurred_on', '>', today())->sum('amount');
+                $extra['monthly_auto'] = (int) MoneyRecurring::query()->where('active', true)->where('to_account_id', $goal->account_id)->get()
+                    ->sum(fn (MoneyRecurring $r) => $r->monthlyAmount());
+            }
+            if ($goal->deadline) {
+                $extra['days_left'] = (int) max(0, today()->diffInDays($goal->deadline, false));
+            }
             if ($left > 0 && $goal->deadline && $goal->deadline->isFuture()) {
                 $months = max(1, (int) ceil(today()->floatDiffInMonths($goal->deadline)));
-                $hint = Money::format((int) ceil($left / $months)).' par mois pour y arriver le '.$goal->deadline->format('d/m/Y');
+                $extra['needed_monthly'] = (int) ceil($left / $months);
+                $hint = Money::format($extra['needed_monthly']).' par mois pour y arriver le '.$goal->deadline->format('d/m/Y');
+            } elseif ($left > 0 && $goal->deadline) {
+                $hint = 'Échéance passée : il manque '.Money::format($left);
             } elseif ($left > 0) {
                 $hint = 'Il manque '.Money::format($left);
+            }
+            // À ce rythme (versements automatiques) : date estimée.
+            if ($left > 0 && ($extra['monthly_auto'] ?? 0) > 0) {
+                $reach = today()->addMonthsNoOverflow((int) ceil(max(0, $left - ($extra['planned'] ?? 0)) / $extra['monthly_auto']));
+                $extra['projection'] = $reach;
+                $extra['on_track'] = ! $goal->deadline || $reach->lte($goal->deadline);
             }
         } else {
             [$from, $to] = $goal->period === 'annee'
@@ -188,7 +210,7 @@ class MoneyStatsService
             ? ($percent > 100 ? 'danger' : ($percent >= 85 ? 'warning' : 'success'))
             : ($percent >= 100 ? 'success' : 'info');
 
-        return ['current' => $current, 'target' => $goal->target, 'percent' => $percent, 'status' => $status, 'hint' => $hint, 'period' => $periodLabel];
+        return ['current' => $current, 'target' => $goal->target, 'percent' => $percent, 'status' => $status, 'hint' => $hint, 'period' => $periodLabel] + $extra;
     }
 
     /**
@@ -199,7 +221,7 @@ class MoneyStatsService
     public function upcoming(Carbon $until): Collection
     {
         $items = collect();
-        foreach (MoneyRecurring::query()->where('active', true)->whereDate('next_on', '<=', $until)->with(['account', 'category'])->get() as $recurring) {
+        foreach (MoneyRecurring::query()->where('active', true)->whereDate('next_on', '<=', $until)->with(['account', 'toAccount', 'category'])->get() as $recurring) {
             $date = $recurring->next_on->copy();
             for ($i = 0; $i < 60 && $date->lte($until); $i++) {
                 $items->push(['recurring' => $recurring, 'date' => $date->copy()]);
@@ -210,15 +232,20 @@ class MoneyStatsService
         return $items->sortBy(fn ($item) => $item['date']->timestamp)->values();
     }
 
-    /** Solde estimé à la fin du mois : soldes d'aujourd'hui + dépenses et revenus fixes à venir. */
+    /**
+     * Solde estimé à la fin du mois : soldes d'aujourd'hui + dépenses et revenus fixes
+     * à venir + mouvements déjà notés pour plus tard (dépôts prévus…). Un virement entre
+     * deux comptes de la vue ne change rien.
+     */
     public function endOfMonthForecast(string $scope): int
     {
         $balance = (int) $this->accounts($scope)->sum('current_balance');
-        $upcoming = $this->upcoming(today()->endOfMonth())
-            ->filter(fn ($item) => $item['date']->isAfter(today()))
-            ->filter(fn ($item) => $scope === 'all' || $item['recurring']->account?->scope === $scope);
+        $upcoming = $this->upcoming(today()->endOfMonth())->filter(fn ($item) => $item['date']->isAfter(today()));
+        $planned = (int) MoneyTransaction::query()->inScope($scope)
+            ->whereDate('occurred_on', '>', today())->whereDate('occurred_on', '<=', today()->endOfMonth())
+            ->whereIn('account_id', MoneyAccount::query()->active()->select('id'))->sum('amount');
 
-        return $balance + (int) $upcoming->sum(fn ($item) => $item['recurring']->amount);
+        return $balance + $planned + (int) $upcoming->sum(fn ($item) => $item['recurring']->effectOn($scope));
     }
 
     /**

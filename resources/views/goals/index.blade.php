@@ -6,37 +6,37 @@
     <div class="page-head">
         <div>
             <h1>Objectifs</h1>
-            <p>Mettre de l'argent de côté pour un projet, encaisser un montant chaque mois, garder un résultat positif, ne pas trop dépenser.</p>
+            <p>Un projet (nouvelle voiture, vacances…) avec son compte séparé et ses dépôts, ou un objectif du mois : encaisser, gagner, ne pas trop dépenser.</p>
         </div>
     </div>
 
     @if ($goals->isEmpty())
-        <div class="card empty"><x-icon name="target" /><h2>Aucun objectif</h2><p>Ajoutez votre premier objectif ci-dessous.</p></div>
+        <div class="card empty"><x-icon name="target" /><h2>Aucun objectif</h2><p>Ajoutez votre premier objectif ci-dessous, par exemple « Nouvelle voiture ».</p></div>
     @else
         <div class="grid grid-2">
             @foreach ($goals as $item)
                 @php $goal = $item['goal']; @endphp
-                <div class="card">
-                    <div class="card-head">
-                        <h2>{{ $goal->name }}</h2>
+                <a class="card goal-card kpi-link" href="{{ $goal->isSaving() ? route('goals.show', $goal) : '#objectif-'.$goal->id }}" id="objectif-{{ $goal->id }}">
+                    <div class="goal-title">
+                        <span class="tx-icon" style="background:{{ $goal->isSaving() ? '#0EA5E9' : 'var(--accent-strong)' }}" aria-hidden="true"><x-icon :name="$goal->iconName()" /></span>
+                        <span class="list-main"><strong>{{ $goal->name }}</strong>
+                            <span class="small muted">
+                                @if ($goal->isSaving())
+                                    {{ $goal->deadline ? 'Pour le '.$goal->deadline->format('d/m/Y') : 'Sans date' }}{{ $goal->account ? ' · compte séparé' : '' }}
+                                @else
+                                    {{ $goal->kindLabel() }} · {{ $item['period'] }} · {{ \App\Models\MoneyGoal::SCOPES[$goal->scope] }}
+                                @endif
+                            </span>
+                        </span>
                         @if ($item['percent'] >= 100 && $goal->kind !== 'depenses')<span class="badge badge-success">Atteint</span>@endif
                     </div>
-                    <p class="small muted" style="margin-top:-.5rem">{{ $goal->kindLabel() }}{{ $item['period'] ? ' · '.$item['period'] : '' }}{{ $goal->kind !== 'epargne' ? ' · '.\App\Models\MoneyGoal::SCOPES[$goal->scope] : '' }}{{ $goal->account ? ' · compte '.$goal->account->name : '' }}</p>
-                    <div class="goal-head"><strong style="font-size:1.25rem"><x-money-amount :value="$item['current']" /></strong><span class="muted">sur <x-money-amount :value="$item['target']" /> · {{ $item['percent'] }} %</span></div>
+                    <div class="goal-head" style="margin-top:.75rem"><strong style="font-size:1.25rem"><x-money-amount :value="$item['current']" /></strong><span class="muted">sur <x-money-amount :value="$item['target']" /> · {{ $item['percent'] }} %</span></div>
                     <div class="progress is-{{ $item['status'] }}"><span style="width:{{ min(100, $item['percent']) }}%"></span></div>
                     @if ($item['hint'])<p class="money-note" style="margin-top:0">{{ $item['hint'] }}</p>@endif
-
-                    @if ($goal->isSaving() && ! $goal->account_id)
-                        <form method="POST" action="{{ route('goals.contribute', $goal) }}" class="budget-form" style="margin-top:.75rem">
-                            @csrf
-                            <input type="text" name="contribution" inputmode="decimal" placeholder="ex. 50 ou -20" aria-label="Montant mis de côté">
-                            <button class="btn btn-sm" type="submit">Ajouter</button>
-                        </form>
-                        @error('contribution')<span class="error small">{{ $message }}</span>@enderror
-                    @endif
-
-                    <details style="margin-top:.75rem">
-                        <summary class="small">Modifier</summary>
+                </a>
+                @unless ($goal->isSaving())
+                    <details class="card" style="margin-top:-.5rem">
+                        <summary class="small">Modifier « {{ $goal->name }} »</summary>
                         <form method="POST" action="{{ route('goals.update', $goal) }}" style="margin-top:.75rem">
                             @csrf
                             @method('PUT')
@@ -50,7 +50,7 @@
                             <button class="btn btn-sm btn-danger-outline" type="submit">Supprimer</button>
                         </form>
                     </details>
-                </div>
+                @endunless
             @endforeach
         </div>
     @endif
@@ -69,7 +69,7 @@
             <h2>Archivés</h2>
             <ul class="stat-list">
                 @foreach ($archived as $goal)
-                    <li><span>{{ $goal->name }}{{ $goal->achieved_at ? ' · atteint le '.$goal->achieved_at->format('d/m/Y') : '' }}</span>
+                    <li><a href="{{ $goal->isSaving() ? route('goals.show', $goal) : '#' }}">{{ $goal->name }}{{ $goal->achieved_at ? ' · atteint le '.$goal->achieved_at->format('d/m/Y') : '' }}</a>
                         <form method="POST" action="{{ route('goals.destroy', $goal) }}" data-confirm="Supprimer cet objectif ?">@csrf @method('DELETE')<button class="icon-btn icon-btn-sm" type="submit"><x-icon name="trash" /><span class="visually-hidden">Supprimer</span></button></form>
                     </li>
                 @endforeach
