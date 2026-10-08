@@ -43,8 +43,10 @@ echo "== 6/6 Tâches automatiques (sauvegardes, bilan du lundi, mises à jour)"
 php artisan config:cache -q && php artisan route:cache -q && php artisan view:cache -q
 git -C "$SRC" rev-parse HEAD > "$HOME/.argent-deployed-commit"
 PHP_BIN="$(command -v php)"
+# Les tâches déjà en place (app de devis…) sont gardées telles quelles.
+CURRENT="$(crontab -l 2>/dev/null || true)"
 {
-    crontab -l 2>/dev/null | grep -vF "cd $APP &&" | grep -vF "$SRC/scripts/deploy.sh" || true
+    printf '%s\n' "$CURRENT" | grep -vF "cd $APP &&" | grep -vF "$SRC/scripts/deploy.sh" | grep -v '^$' || true
     echo "* * * * * cd $APP && $PHP_BIN artisan schedule:run >> /dev/null 2>&1"
     echo "*/10 * * * * /bin/bash $SRC/scripts/deploy.sh"
 } | crontab -
