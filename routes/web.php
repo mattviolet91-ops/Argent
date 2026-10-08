@@ -19,6 +19,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/code', [Controllers\LockController::class, 'storeSetup'])->middleware('throttle:10,1')->name('setup.store');
         Route::get('/verrou', [Controllers\LockController::class, 'unlockForm'])->name('unlock');
         Route::post('/verrou', [Controllers\LockController::class, 'unlock'])->middleware('throttle:20,1')->name('unlock.store');
+        Route::post('/verrou/faceid/options', [Controllers\LockController::class, 'faceIdOptions'])->middleware('throttle:20,1')->name('unlock.faceid.options');
+        Route::post('/verrou/faceid', [Controllers\LockController::class, 'faceIdUnlock'])->middleware('throttle:20,1')->name('unlock.faceid');
         Route::post('/verrouiller', [Controllers\LockController::class, 'lock'])->name('lock');
         Route::get('/code-oublie', [Controllers\LockController::class, 'forgot'])->name('forgot');
         Route::post('/code-oublie', [Controllers\LockController::class, 'reset'])->middleware('throttle:5,1')->name('forgot.store');
@@ -71,6 +73,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/mise-a-jour', [Controllers\SettingsController::class, 'sync'])->middleware('throttle:10,1')->name('sync');
         Route::get('/export', [Controllers\SettingsController::class, 'export'])->middleware('throttle:10,1')->name('export');
         Route::get('/sauvegardes/{name}', [Controllers\SettingsController::class, 'backup'])->where('name', 'argent-[\d-]+\.(sqlite|json)')->middleware('throttle:10,1')->name('backups.download');
+
+        Route::post('/faceid/options', [Controllers\FaceIdController::class, 'options'])->middleware('throttle:10,1')->name('faceid.options');
+        Route::post('/faceid', [Controllers\FaceIdController::class, 'store'])->middleware('throttle:10,1')->name('faceid.store');
+        Route::delete('/faceid/{credential}', [Controllers\FaceIdController::class, 'destroy'])->whereNumber('credential')->name('faceid.destroy');
 
         Route::post('/notifications/abonnement', [Controllers\PushController::class, 'subscribe'])->middleware('throttle:20,1')->name('push.subscribe');
         Route::post('/notifications/desabonnement', [Controllers\PushController::class, 'unsubscribe'])->name('push.unsubscribe');

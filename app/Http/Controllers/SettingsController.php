@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ActivityLog;
 use App\Models\MoneyAccount;
 use App\Models\MoneyTransaction;
+use App\Models\WebauthnCredential;
 use App\Services\ActivityLogger;
 use App\Services\BackupService;
 use App\Services\DevisClient;
@@ -41,6 +42,7 @@ class SettingsController extends Controller
             'pushKey' => $push->publicKey(),
             'backups' => $backups->list()->take(10),
             'journal' => ActivityLog::query()->latest('id')->limit(15)->get(),
+            'faceIdDevices' => WebauthnCredential::query()->where('user_id', auth()->id())->latest('id')->get(),
             'accounts' => MoneyAccount::query()->active()->ordered()->get(),
             'syncAccount' => $sync->account(),
             'cashAccount' => $sync->cashAccount(),

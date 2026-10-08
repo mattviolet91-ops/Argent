@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\MoneyAccount;
 use App\Services\ActivityLogger;
 use App\Services\DevisClient;
+use App\Services\FaceIdService;
 use App\Services\MoneyLockService;
 use App\Services\MoneySyncService;
 use App\Services\Settings;
 use App\Support\Money;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -94,7 +96,10 @@ class LockController extends Controller
             return redirect()->route('dashboard');
         }
 
-        return view('lock.unlock', ['blockedFor' => $this->lock->blockedFor()]);
+        return view('lock.unlock', [
+            'blockedFor' => $this->lock->blockedFor(),
+            'faceId' => app(FaceIdService::class)->enabledFor($request->user()),
+        ]);
     }
 
     public function unlock(Request $request): RedirectResponse
@@ -105,8 +110,19 @@ class LockController extends Controller
         if ($seconds = $this->lock->blockedFor()) {
             throw ValidationException::withMessages(['code' => 'Trop de codes faux. Réessayez dans '.max(1, (int) ceil($seconds / 60)).' minute(s).']);
         }
-        $request->validate(['code' => ['required', 'string', 'max:8']], ['code.required' => 'Tapez votre code Argent.']);
+        // Face ID activé : le code seul ne suffit plus, il faut aussi le mot de passe du compte.
+        $faceId = app(FaceIdService::class)->enabledFor($request->user());
+        $request->validate([
+            'code' => ['required', 'string', 'max:8'],
+            'password' => [$faceId ? 'required' : 'nullable', 'string'],
+        ], ['code.required' => 'Tapez votre code Argent.', 'password.required' => 'Tapez aussi le mot de passe de votre compte.']);
 
+        if ($faceId && ! Hash::check((string) $request->input('password'), $request->user()->password)) {
+            $left = $this->lock->failed($request);
+            throw ValidationException::withMessages(['password' => $left > 0
+                ? 'Mot de passe incorrect. Encore '.$left.' essai'.($left > 1 ? 's' : '').'.'
+                : 'Mot de passe incorrect. App bloquée '.MoneyLockService::BLOCK_MINUTES.' minutes.']);
+        }
         if (! $this->lock->checkCode((string) $request->input('code'))) {
             $left = $this->lock->failed($request);
             throw ValidationException::withMessages(['code' => $left > 0
@@ -116,9 +132,46 @@ class LockController extends Controller
 
         $this->lock->succeeded();
         $this->lock->unlock($request);
+
+        return redirect()->to($this->intended($request));
+    }
+
+    /** Face ID : options pour le téléphone. */
+    public function faceIdOptions(Request $request, FaceIdService $faceId): JsonResponse
+    {
+        if (! $faceId->enabledFor($request->user())) {
+            return response()->json(['message' => 'Face ID n\'est pas activé.'], 404);
+        }
+        if ($seconds = $this->lock->blockedFor()) {
+            return response()->json(['message' => 'Trop d\'essais. Réessayez dans '.max(1, (int) ceil($seconds / 60)).' minute(s).'], 429);
+        }
+
+        return response()->json($faceId->unlockOptions($request->user(), $request));
+    }
+
+    /** Face ID : vérification de la signature du téléphone, puis ouverture. */
+    public function faceIdUnlock(Request $request, FaceIdService $faceId): JsonResponse
+    {
+        if ($seconds = $this->lock->blockedFor()) {
+            return response()->json(['message' => 'Trop d\'essais. Réessayez dans '.max(1, (int) ceil($seconds / 60)).' minute(s).'], 429);
+        }
+        if (! $faceId->verify($request->user(), $request, (array) $request->json()->all())) {
+            $left = $this->lock->failed($request);
+
+            return response()->json(['message' => $left > 0 ? 'Face ID non reconnu. Réessayez.' : 'App bloquée '.MoneyLockService::BLOCK_MINUTES.' minutes.'], 422);
+        }
+
+        $this->lock->succeeded();
+        $this->lock->unlock($request);
+
+        return response()->json(['redirect' => $this->intended($request)]);
+    }
+
+    private function intended(Request $request): string
+    {
         $intended = (string) $request->session()->pull('argent.intended', '');
 
-        return redirect()->to($intended !== '' && str_starts_with($intended.'/', url('/').'/') ? $intended : route('dashboard'));
+        return $intended !== '' && str_starts_with($intended.'/', url('/').'/') ? $intended : route('dashboard');
     }
 
     public function lock(Request $request): RedirectResponse

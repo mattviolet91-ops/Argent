@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Services\ActivityLogger;
+use App\Services\FaceIdService;
+use App\Services\PushService;
+use App\Services\Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -43,9 +46,31 @@ class LoginController extends Controller
 
         RateLimiter::clear($throttleKey);
         $request->session()->regenerate();
-        ActivityLogger::log('auth.login', 'Connexion');
+        $device = FaceIdService::device((string) $request->userAgent());
+        ActivityLogger::log('auth.login', 'Connexion ('.$device.')');
+        $this->alertIfNewDevice($request, $device);
 
         return redirect()->intended(route('dashboard'));
+    }
+
+    /** Premier passage d'un appareil (hors toute première connexion) : notification sur les téléphones déjà connus. */
+    private function alertIfNewDevice(Request $request, string $device): void
+    {
+        $settings = app(Settings::class);
+        $known = (array) $settings->get('auth.devices', []);
+        $fingerprint = hash('sha256', (string) $request->userAgent());
+        if (in_array($fingerprint, $known, true)) {
+            return;
+        }
+        $settings->set(['auth.devices' => array_slice(array_merge($known, [$fingerprint]), -20)]);
+        if ($known !== []) {
+            app(PushService::class)->send(
+                'Nouvelle connexion à Argent',
+                'Connexion depuis un nouvel appareil ('.$device.'). Si ce n\'est pas vous, changez votre mot de passe.',
+                route('settings'),
+                $request->user()->id,
+            );
+        }
     }
 
     public function destroy(Request $request): RedirectResponse

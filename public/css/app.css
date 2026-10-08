@@ -969,3 +969,6 @@ details > summary.btn::-webkit-details-marker { display: none; }
 .money-alerts { display: grid; gap: .5rem; margin-bottom: 1rem; }
 .money-alert { display: block; text-decoration: none; color: inherit; margin: 0; }
 .money-alert strong { margin-right: .25rem; }
+.faceid-btn { min-height: 3.25rem; font-size: 1.0625rem; }
+.faceid-btn .icon { width: 1.5rem; height: 1.5rem; }
+.lock-screen details > summary { cursor: pointer; font-weight: 600; }

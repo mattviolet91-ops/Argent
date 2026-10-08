@@ -79,6 +79,28 @@
     </div>
     <script src="{{ asset('js/push.js') }}?v={{ filemtime(public_path('js/push.js')) }}" defer></script>
 
+    <div class="card" id="faceid" data-faceid-register data-options="{{ route('faceid.options') }}" data-store="{{ route('faceid.store') }}">
+        <h2>Face ID / empreinte</h2>
+        <p class="small muted">Ouvrez l'app avec votre visage (ou votre doigt) au lieu du code. Une fois activé, le code seul ne suffit plus : en secours, il faut le code <strong>et</strong> le mot de passe. Rien de votre visage ne quitte le téléphone.</p>
+        @if ($faceIdDevices->isNotEmpty())
+            <ul class="stat-list">
+                @foreach ($faceIdDevices as $device)
+                    <li>
+                        <span>{{ $device->device ?? 'Appareil' }} <span class="muted small">· ajouté le {{ $device->created_at->format('d/m/Y') }}{{ $device->last_used_at ? ' · utilisé le '.$device->last_used_at->format('d/m/Y à H:i') : '' }}</span></span>
+                        <form method="POST" action="{{ route('faceid.destroy', $device) }}" data-confirm="Retirer cet appareil ? Il ne pourra plus ouvrir l'app avec Face ID.">
+                            @csrf
+                            @method('DELETE')
+                            <button class="link-btn small" type="submit">Retirer</button>
+                        </form>
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+        <p class="small" data-faceid-message role="status"></p>
+        <button class="btn" type="button" data-faceid-add><x-icon name="faceid" /> Activer Face ID sur cet appareil</button>
+    </div>
+    <script src="{{ asset('js/faceid.js') }}?v={{ filemtime(public_path('js/faceid.js')) }}" defer></script>
+
     <div class="card">
         <h2>Mettre à jour maintenant</h2>
         <p class="small muted">Sans attendre lundi : paiements et frais de l'app de devis, et dépenses fixes arrivées à échéance.</p>
