@@ -1139,3 +1139,13 @@ details > summary.btn::-webkit-details-marker { display: none; }
 .offline-when { margin: 0 0 .75rem; }
 .offline-activate { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; }
 .offline-activate .field { flex: 1; min-width: 10rem; margin: 0; }
+
+/* iPhone : le champ date (ou heure) ignore sa largeur et dépasse de son cadre ; la page
+   devient plus large que l'écran et Safari dézoome tout. Ici, il reste dans son cadre. */
+input[type="date"], input[type="time"], input[type="datetime-local"] { -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; }
+.field input[type="date"], .field input[type="time"], .field input[type="datetime-local"] { display: block; }
+input[type="date"]::-webkit-date-and-time-value, input[type="time"]::-webkit-date-and-time-value { text-align: left; min-height: 1.5em; }
+input[type="file"] { max-width: 100%; }
+.field, .form-grid > * { min-width: 0; }
+dialog.sheet { max-width: min(520px, 100vw); overflow-x: hidden; overscroll-behavior: contain; }
+body { overflow-x: clip; }
