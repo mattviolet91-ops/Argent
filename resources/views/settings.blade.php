@@ -103,6 +103,21 @@
     </div>
     <script src="{{ asset('js/faceid.js') }}?v={{ filemtime(public_path('js/faceid.js')) }}" defer></script>
 
+    <div class="card" id="hors-ligne" data-offline-settings>
+        <h2>Mode hors ligne</h2>
+        <p class="small muted">Sans réseau (chantier, sous-sol, avion…), l'app s'ouvre quand même sur ce téléphone : soldes, derniers mouvements et échéances de la dernière ouverture, et vous pouvez noter des dépenses, ajoutées toutes seules au retour du réseau.
+            Ces données restent sur le téléphone, chiffrées avec votre code Argent : sans le code, elles sont illisibles. 10 codes faux hors ligne les effacent.</p>
+        <p data-offline-status class="small" role="status">Vérification…</p>
+        <form data-offline-form action="{{ route('offline.activate') }}" class="offline-activate">
+            <div class="field">
+                <label for="offline-code">Votre code Argent</label>
+                <input id="offline-code" class="pin-input" type="password" inputmode="numeric" maxlength="8" autocomplete="off" data-offline-code required>
+            </div>
+            <button class="btn" type="submit">Activer sur cet appareil</button>
+        </form>
+        <button class="btn btn-sm btn-danger-outline" type="button" data-offline-off data-url="{{ route('offline.deactivate') }}" hidden style="margin-top:.75rem">Désactiver et effacer de cet appareil</button>
+    </div>
+
     <div class="card">
         <h2>Mettre à jour maintenant</h2>
         <p class="small muted">Sans attendre lundi : paiements et frais de l'app de devis, et dépenses fixes arrivées à échéance.</p>

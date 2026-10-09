@@ -41,6 +41,10 @@ envoie chaque lundi les paiements reçus et les frais des chantiers.
   mensualité dans les Fixes.
 - Patrimoine net sur 12 mois, comparaison avec le même mois l'an dernier, bilan
   du mois en PDF (pour le comptable).
+- Mode hors ligne (à activer par appareil dans Réglages) : sans réseau, l'app
+  s'ouvre avec le code sur un résumé gardé chiffré sur le téléphone (AES-GCM, clé
+  de l'appareil chiffrée avec le code), et les dépenses notées sont ajoutées au
+  retour du réseau, sans doublon. 10 codes faux hors ligne effacent ces données.
 - Lien avec l'app de devis : paiements et frais copiés chaque lundi (clé en lecture
   seule), bilan de la semaine figé et notification.
 - Mode discret (montants floutés), export Excel (CSV), sauvegarde chaque nuit,

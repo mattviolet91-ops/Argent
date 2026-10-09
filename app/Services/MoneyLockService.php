@@ -179,7 +179,7 @@ class MoneyLockService
     }
 
     /** Change quand le code change : les sessions ouvertes avec l'ancien code se reverrouillent. */
-    private function codeVersion(): string
+    public function codeVersion(): string
     {
         return substr(hash('sha256', (string) $this->settings->get('argent.code_hash', '')), 0, 16);
     }

@@ -1128,3 +1128,14 @@ details > summary.btn::-webkit-details-marker { display: none; }
 @media (max-width: 420px) { .money-mini .kpi .value { font-size: .9375rem; letter-spacing: -.01em; } }
 .money-chart .zero { stroke-dasharray: none; }
 .table-wrap { position: relative; }
+
+/* Mode hors ligne */
+.offline-badge { margin-left: .5rem; }
+.offline-main { padding-bottom: 2rem; }
+.offline-center { max-width: 420px; margin: 2rem auto; text-align: center; display: flex; flex-direction: column; gap: .75rem; align-items: stretch; }
+.offline-center h1 { margin: 0; }
+.offline-center .pin-input { text-align: center; }
+.offline-online { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.offline-when { margin: 0 0 .75rem; }
+.offline-activate { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; }
+.offline-activate .field { flex: 1; min-width: 10rem; margin: 0; }

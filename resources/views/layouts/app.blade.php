@@ -89,6 +89,10 @@
         <script src="{{ asset('js/money.js') }}?v={{ filemtime(public_path('js/money.js')) }}" defer></script>
         <script src="{{ asset('js/files.js') }}?v={{ filemtime(public_path('js/files.js')) }}" defer></script>
         <script src="{{ asset('js/charts.js') }}?v={{ filemtime(public_path('js/charts.js')) }}" defer></script>
+        {{-- Mode hors ligne : clé de cet appareil (seulement app déverrouillée), pour garder le résumé à jour. --}}
+        <div hidden data-offline-app data-key="{{ \App\Http\Controllers\OfflineController::key(request()) }}" data-version="{{ app(\App\Services\MoneyLockService::class)->codeVersion() }}"
+            data-data-url="{{ route('offline.data') }}" data-sync-url="{{ route('offline.sync') }}" data-settings-url="{{ route('settings') }}"></div>
+        <script src="{{ asset('js/offline.js') }}?v={{ filemtime(public_path('js/offline.js')) }}" defer></script>
     @endif
 </div>
 @endsection

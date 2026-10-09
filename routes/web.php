@@ -5,6 +5,9 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Middleware\MoneyGate;
 use Illuminate\Support\Facades\Route;
 
+// Page de l'app sans réseau, gardée par le téléphone : aucune donnée dedans.
+Route::get('/hors-ligne', [Controllers\OfflineController::class, 'shell'])->name('offline');
+
 Route::middleware('guest')->group(function () {
     Route::get('/connexion', [LoginController::class, 'create'])->name('login');
     Route::post('/connexion', [LoginController::class, 'store'])->middleware('throttle:20,1');
@@ -106,6 +109,11 @@ Route::middleware('auth')->group(function () {
         Route::put('/credits/{credit}', [Controllers\CreditController::class, 'update'])->whereNumber('credit')->name('credits.update');
         Route::delete('/credits/{credit}', [Controllers\CreditController::class, 'destroy'])->whereNumber('credit')->name('credits.destroy');
         Route::post('/credits/{credit}/fixes', [Controllers\CreditController::class, 'recurring'])->whereNumber('credit')->name('credits.recurring');
+
+        Route::post('/hors-ligne/activer', [Controllers\OfflineController::class, 'activate'])->middleware('throttle:10,1')->name('offline.activate');
+        Route::post('/hors-ligne/desactiver', [Controllers\OfflineController::class, 'deactivate'])->name('offline.deactivate');
+        Route::get('/hors-ligne/donnees', [Controllers\OfflineController::class, 'data'])->middleware('throttle:60,1')->name('offline.data');
+        Route::post('/hors-ligne/envoyer', [Controllers\OfflineController::class, 'sync'])->middleware('throttle:30,1')->name('offline.sync');
 
         Route::get('/releve', [Controllers\ImportController::class, 'create'])->name('import.create');
         Route::post('/releve/apercu', [Controllers\ImportController::class, 'preview'])->middleware('throttle:20,1')->name('import.preview');
