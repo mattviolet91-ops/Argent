@@ -34,6 +34,8 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/mouvements', [Controllers\TransactionController::class, 'index'])->name('transactions.index');
         Route::post('/mouvements', [Controllers\TransactionController::class, 'store'])->name('transactions.store');
+        Route::get('/classer', [Controllers\ClassifyController::class, 'index'])->name('transactions.classify');
+        Route::post('/classer', [Controllers\ClassifyController::class, 'store'])->name('transactions.classify.store');
         Route::get('/mouvements/{transaction}/modifier', [Controllers\TransactionController::class, 'edit'])->whereNumber('transaction')->name('transactions.edit');
         Route::put('/mouvements/{transaction}', [Controllers\TransactionController::class, 'update'])->whereNumber('transaction')->name('transactions.update');
         Route::delete('/mouvements/{transaction}', [Controllers\TransactionController::class, 'destroy'])->whereNumber('transaction')->name('transactions.destroy');

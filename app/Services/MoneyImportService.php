@@ -3,13 +3,16 @@
 namespace App\Services;
 
 use App\Models\MoneyAccount;
+use App\Models\MoneyCategory;
 use App\Models\MoneyRecurring;
 use App\Models\MoneyRule;
+use App\Models\MoneyScopeRule;
 use App\Models\MoneyTransaction;
 use App\Support\Money;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Smalot\PdfParser\Parser as PdfParser;
 
 /**
  * Import d'un relevé bancaire : fichier CSV (export Excel de la banque) ou OFX.
@@ -30,12 +33,17 @@ class MoneyImportService
     ];
 
     /**
-     * Lit le fichier. Retourne les lignes [date Y-m-d, libellé, montant en centimes, identifiant banque].
+     * Lit le fichier (CSV, OFX ou PDF). Retourne les lignes [date Y-m-d, libellé, montant en
+     * centimes, identifiant banque] ; « guessed » : sens (entrée ou sortie) deviné, d'un PDF.
      *
-     * @return list<array{date: string, label: string, amount: int, fitid: ?string}>
+     * @return list<array{date: string, label: string, amount: int, fitid: ?string, guessed?: bool}>
      */
     public function parse(string $content): array
     {
+        // Relevé PDF (celui envoyé par la banque chaque mois).
+        if (str_starts_with(ltrim(substr($content, 0, 1024)), '%PDF')) {
+            return array_slice($this->parsePdf($content), 0, self::MAX_ROWS);
+        }
         $content = $this->toUtf8($content);
 
         $rows = (str_contains($content, '<STMTTRN>') || str_contains(strtoupper(substr($content, 0, 400)), 'OFXHEADER'))
@@ -46,18 +54,20 @@ class MoneyImportService
     }
 
     /**
-     * Prépare l'aperçu : doublons, ressemblances et catégories proposées.
+     * Prépare l'aperçu : doublons, ressemblances, catégories et perso / pro proposés.
+     * Statut « price » : prélèvement d'une dépense fixe arrivé à un autre prix (abonnement
+     * plus cher…) ; il remplace le prélèvement prévu à l'ancien prix.
      *
-     * @param  list<array{date: string, label: string, amount: int, fitid: ?string}>  $rows
-     *                                                                                       Statut « price » : prélèvement d'une dépense fixe arrivé à un autre prix (abonnement
-     *                                                                                       plus cher…) ; il remplace le prélèvement prévu à l'ancien prix.
-     * @return list<array{date: string, label: string, amount: int, hash: string, status: string, category_id: ?int, similar: ?string, replaces?: int, recurring_id?: int, old_amount?: int}>
+     * @param  list<array{date: string, label: string, amount: int, fitid: ?string, guessed?: bool}>  $rows
+     * @return list<array{date: string, label: string, amount: int, hash: string, status: string, category_id: ?int, similar: ?string, scope: string, scope_hint: string, guessed: bool, replaces?: int, recurring_id?: int, old_amount?: int}>
      */
     public function preview(MoneyAccount $account, array $rows): array
     {
         $hashes = array_map(fn ($row) => $this->hash($account, $row), $rows);
         $known = MoneyTransaction::query()->whereIn('import_hash', $hashes)->pluck('import_hash')->flip();
         $rules = $this->rules();
+        $scopeRules = $this->scopeRules();
+        $categoryScopes = MoneyCategory::query()->pluck('scope', 'id');
 
         if ($rows !== []) {
             $dates = array_column($rows, 'date');
@@ -98,14 +108,19 @@ class MoneyImportService
                     $extra = ['replaces' => $planned->id, 'recurring_id' => $planned->recurring_id, 'old_amount' => $planned->amount, 'planned_category' => $planned->category_id];
                 }
             }
+            $categoryId = $this->guess($row['label'], $rules) ?? ($extra['planned_category'] ?? null);
+            [$scope, $hint] = $this->guessScope($row['label'], $categoryId, $account, $scopeRules, $categoryScopes);
             $preview[] = [
                 'date' => $row['date'],
                 'label' => $row['label'],
                 'amount' => $row['amount'],
                 'hash' => $hashes[$i],
                 'status' => $status,
-                'category_id' => $this->guess($row['label'], $rules) ?? ($extra['planned_category'] ?? null),
+                'category_id' => $categoryId,
                 'similar' => $similar,
+                'scope' => $scope,
+                'scope_hint' => $hint,
+                'guessed' => (bool) ($row['guessed'] ?? false),
             ] + $extra;
         }
 
@@ -156,6 +171,45 @@ class MoneyImportService
         }
     }
 
+    /**
+     * Perso ou pro ? D'abord ce qui a été appris (« point p » → pro), puis la catégorie
+     * (Matériaux → pro, Courses → perso), sinon le compte. Retourne [perso|pro, rule|category|account].
+     *
+     * @param  Collection<int, MoneyScopeRule>  $rules
+     * @param  Collection<int, string>  $categoryScopes
+     * @return array{0: string, 1: string}
+     */
+    public function guessScope(string $label, ?int $categoryId, MoneyAccount $account, Collection $rules, Collection $categoryScopes): array
+    {
+        $normalized = ' '.implode(' ', preg_split('/[^a-z]+/', Str::of($label)->ascii()->lower()->value()) ?: []).' ';
+        foreach ($rules as $rule) {
+            if (str_contains($normalized, ' '.$rule->keyword.' ')) {
+                return [$rule->scope, 'rule'];
+            }
+        }
+        $fromCategory = $categoryId ? ($categoryScopes[$categoryId] ?? null) : null;
+        if (in_array($fromCategory, ['perso', 'pro'], true)) {
+            return [$fromCategory, 'category'];
+        }
+
+        return [$account->scope, 'account'];
+    }
+
+    /** Retient « mot du libellé → perso ou pro » pour les prochaines fois. */
+    public function learnScope(string $label, string $scope): void
+    {
+        $keyword = $this->keyword($label);
+        if ($keyword !== null && in_array($scope, ['perso', 'pro'], true)) {
+            MoneyScopeRule::query()->updateOrCreate(['keyword' => $keyword], ['scope' => $scope]);
+        }
+    }
+
+    /** Règles perso / pro, les plus précises d'abord. */
+    public function scopeRules(): Collection
+    {
+        return MoneyScopeRule::query()->get()->sortByDesc(fn (MoneyScopeRule $rule) => strlen($rule->keyword))->values();
+    }
+
     /** Mot-clé du commerçant : « CB CARREFOUR MARKET 05/10 » → « carrefour market ». */
     public function keyword(string $label): ?string
     {
@@ -202,6 +256,249 @@ class MoneyImportService
         $content = preg_replace('/^\xEF\xBB\xBF/', '', $content) ?? $content;
 
         return mb_check_encoding($content, 'UTF-8') ? $content : mb_convert_encoding($content, 'UTF-8', 'Windows-1252');
+    }
+
+    /** Mots d'un libellé qui disent que l'argent arrive (quand la colonne ne le dit pas). */
+    private const CREDIT_WORDS = [
+        'vir sepa recu', 'virement recu', 'vir recu', 'vir inst recu', 'vir inst re', 'virement de', 'vir de ', 'remise', 'versement',
+        'avoir', 'rembt', 'remboursement', 'prime', 'interets', 'depot', 'salaire', 'paie ', 'allocation', 'caf ', 'encaissement',
+    ];
+
+    /** Lignes d'un relevé qui ne sont pas des opérations. */
+    private const PDF_SKIP = '/^\s*(ancien |nouveau )?(solde|total|totaux|sous total|report|a reporter|reporte)\b|\bsolde (crediteur|debiteur|au|precedent|en votre faveur)\b/';
+
+    /**
+     * Relevé PDF : les lignes qui commencent par une date et finissent par un montant. Le
+     * sens (sortie ou entrée) vient de la colonne Débit / Crédit, sinon du signe, sinon du
+     * libellé (« VIR SEPA RECU », « REMISE »…) : à vérifier dans l'aperçu.
+     *
+     * @return list<array{date: string, label: string, amount: int, fitid: null, guessed: bool}>
+     */
+    private function parsePdf(string $content): array
+    {
+        try {
+            $pdf = (new PdfParser)->parseContent($content);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        // Le texte, ligne par ligne (même hauteur sur la page), de gauche à droite.
+        $lines = [];
+        $text = '';
+        foreach ($pdf->getPages() as $pageIndex => $page) {
+            $rows = [];
+            foreach ($page->getDataTm() as $item) {
+                $value = trim(preg_replace('/[ \t\r\n]+/', ' ', (string) ($item[1] ?? '')) ?? '');
+                if ($value === '') {
+                    continue;
+                }
+                $y = (float) $item[0][5];
+                $key = null;
+                foreach (array_keys($rows) as $existing) {
+                    if (abs((float) $existing - $y) <= 2.5) {
+                        $key = $existing;
+                        break;
+                    }
+                }
+                $key ??= (string) $y;
+                $rows[$key][] = [(float) $item[0][4], $value];
+                $text .= ' '.$value;
+            }
+            uksort($rows, fn ($a, $b) => (float) $b <=> (float) $a);
+            foreach ($rows as $y => $items) {
+                usort($items, fn ($a, $b) => $a[0] <=> $b[0]);
+                $lines[] = ['y' => (float) $y, 'page' => $pageIndex, 'items' => $this->splitPdfItems($items)];
+            }
+        }
+
+        // Année des dates « 05/10 » : celle de la fin du relevé (« … au 31/10/2026 »).
+        $end = null;
+        if (preg_match_all('/\b(\d{2})[\/.](\d{2})[\/.](\d{4})\b/', $text, $m, PREG_SET_ORDER)) {
+            foreach ($m as $match) {
+                if (checkdate((int) $match[2], (int) $match[1], (int) $match[3]) && (int) $match[3] >= 2000) {
+                    $date = sprintf('%04d-%02d-%02d', $match[3], $match[2], $match[1]);
+                    $end = max($end ?? $date, $date);
+                }
+            }
+        }
+        $endDate = $end ? Carbon::parse($end) : today();
+
+        $columns = null;
+        $result = [];
+        $orphans = [];
+        foreach ($lines as $index => $line) {
+            $words = array_map(fn ($item) => Str::of($item[1])->ascii()->lower()->value(), $line['items']);
+            // En-tête du tableau : où sont les colonnes Débit et Crédit.
+            $debit = $credit = null;
+            foreach ($line['items'] as $i => $item) {
+                if (preg_match('/^debit/', $words[$i])) {
+                    $debit = $this->pdfCenter($item);
+                } elseif (preg_match('/^credit/', $words[$i])) {
+                    $credit = $this->pdfCenter($item);
+                }
+            }
+            if ($debit !== null && $credit !== null) {
+                $columns = ['debit' => $debit, 'credit' => $credit];
+
+                continue;
+            }
+
+            $items = $line['items'];
+            $first = $items[0][1] ?? '';
+            if (! preg_match('/^(\d{2})[\/.](\d{2})(?:[\/.](\d{2}|\d{4}))?$/', $first, $d)) {
+                // Morceau de libellé sur sa propre ligne : rattaché ensuite à l'opération la plus proche.
+                if (! $this->pdfAmountIndex($items) && ! preg_match(self::PDF_SKIP, implode(' ', $words))) {
+                    $orphans[] = ['y' => $line['y'], 'x' => $items[0][0], 'page' => $line['page'], 'text' => implode(' ', array_column($items, 1))];
+                }
+
+                continue;
+            }
+            array_shift($items);
+            // Deuxième date (date de valeur) : ignorée.
+            if (isset($items[0]) && preg_match('/^\d{2}[\/.]\d{2}(?:[\/.]\d{2,4})?$/', $items[0][1])) {
+                array_shift($items);
+            }
+            $amountIndex = $this->pdfAmountIndex($items, 0);
+            if ($amountIndex === null) {
+                continue;
+            }
+            $amountItem = $items[$amountIndex];
+            $label = trim(implode(' ', array_column(array_slice($items, 0, $amountIndex), 1)));
+            $plain = ' '.Str::of($label)->ascii()->lower()->value().' ';
+            if (preg_match(self::PDF_SKIP, $plain)) {
+                continue;
+            }
+
+            $raw = $amountItem[1];
+            $cents = abs((int) $this->amount(preg_replace('/\s*(€|eur)$/i', '', $raw) ?? $raw));
+            if ($cents === 0) {
+                continue;
+            }
+            $year = isset($d[3]) ? (strlen($d[3]) === 2 ? 2000 + (int) $d[3] : (int) $d[3]) : $endDate->year;
+            if (! isset($d[3]) && (int) $d[2] > $endDate->month + 1) {
+                $year--;
+            }
+            if (! checkdate((int) $d[2], (int) $d[1], $year)) {
+                continue;
+            }
+            $result[] = [
+                'date' => sprintf('%04d-%02d-%02d', $year, $d[2], $d[1]),
+                'before' => [], 'label' => $label, 'after' => [],
+                'raw' => $raw, 'center' => $this->pdfCenter($amountItem), 'columns' => $columns,
+                'y' => $line['y'], 'page' => $line['page'], 'x' => $amountIndex > 0 ? $items[0][0] : null,
+            ];
+        }
+
+        // Lignes de libellé seules : à l'opération la plus proche sur la page (celle du dessus si égalité).
+        foreach ($orphans as $orphan) {
+            $best = null;
+            foreach ($result as $k => $row) {
+                if ($row['page'] !== $orphan['page'] || ($row['x'] !== null && abs($row['x'] - $orphan['x']) > 40)) {
+                    continue;
+                }
+                $distance = abs($row['y'] - $orphan['y']) + ($row['y'] < $orphan['y'] ? 3 : 0);
+                if ($distance <= 16 && ($best === null || $distance < $best[1])) {
+                    $best = [$k, $distance];
+                }
+            }
+            if ($best !== null && count($result[$best[0]]['before']) + count($result[$best[0]]['after']) < 2) {
+                $result[$best[0]][$result[$best[0]]['y'] < $orphan['y'] ? 'before' : 'after'][] = $orphan['text'];
+            }
+        }
+
+        $rows = [];
+        foreach ($result as $row) {
+            $label = Str::squish(implode(' ', [...$row['before'], $row['label'], ...$row['after']]));
+            $plain = ' '.Str::of($label)->ascii()->lower()->value().' ';
+            if ($label === '') {
+                continue;
+            }
+            // Sens : signe du montant, sinon colonne Débit / Crédit, sinon le libellé.
+            $raw = $row['raw'];
+            if (str_starts_with($raw, '-') || str_ends_with($raw, '-')) {
+                $sign = -1;
+            } elseif (str_starts_with($raw, '+')) {
+                $sign = 1;
+            } elseif ($row['columns']) {
+                $sign = abs($row['center'] - $row['columns']['credit']) < abs($row['center'] - $row['columns']['debit']) ? 1 : -1;
+            } else {
+                $sign = -1;
+                foreach (self::CREDIT_WORDS as $word) {
+                    if (str_contains($plain, $word)) {
+                        $sign = 1;
+                        break;
+                    }
+                }
+            }
+            $rows[] = [
+                'date' => $row['date'],
+                'label' => mb_substr($label, 0, 160),
+                'amount' => $sign * abs((int) $this->amount(preg_replace('/\s*(€|eur)$/i', '', $raw) ?? $raw)),
+                'fitid' => null,
+                'guessed' => true,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Morceaux de texte collés (« 02/10 CB CARREFOUR », « CARREFOUR 45,20 ») : séparés.
+     *
+     * @param  list<array{0: float, 1: string}>  $items
+     * @return list<array{0: float, 1: string}>
+     */
+    private function splitPdfItems(array $items): array
+    {
+        $out = [];
+        foreach ($items as $index => [$x, $value]) {
+            if ($index === 0 && preg_match('/^(\d{2}[\/.]\d{2}(?:[\/.]\d{2,4})?)\s+(.+)$/u', $value, $m)) {
+                $out[] = [$x, $m[1]];
+                $value = $m[2];
+                $x += 30;
+                if (preg_match('/^(\d{2}[\/.]\d{2}(?:[\/.]\d{2,4})?)\s+(.+)$/u', $value, $n)) {
+                    $out[] = [$x, $n[1]];
+                    $value = $n[2];
+                    $x += 30;
+                }
+            }
+            if (preg_match('/^(.*\D)\s+([+-]?\d{1,3}(?:[ .\x{00A0}\x{202F}]\d{3})*,\d{2}\s*(?:€|EUR)?)$/u', $value, $m) && ! $this->isPdfAmount($value)) {
+                $out[] = [$x, trim($m[1])];
+                $out[] = [$x + 6 * mb_strlen($m[1]), $m[2]];
+
+                continue;
+            }
+            $out[] = [$x, $value];
+        }
+
+        return $out;
+    }
+
+    private function isPdfAmount(string $value): bool
+    {
+        return (bool) preg_match('/^[+-]?\d{1,3}(?:[ .\x{00A0}\x{202F}]?\d{3})*,\d{2}\s*(?:€|EUR)?-?$/u', $value);
+    }
+
+    /**
+     * Premier montant de la ligne (le suivant, s'il y en a un, est souvent le solde).
+     *
+     * @param  list<array{0: float, 1: string}>  $items
+     */
+    private function pdfAmountIndex(array $items, int $from = 1): ?int
+    {
+        foreach ($items as $i => $item) {
+            if ($i >= $from && $this->isPdfAmount($item[1])) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    /** Milieu approximatif d'un morceau de texte (5 points par caractère). */
+    private function pdfCenter(array $item): float
+    {
+        return $item[0] + mb_strlen($item[1]) * 2.5;
     }
 
     /** @return list<array{date: string, label: string, amount: int, fitid: ?string}> */

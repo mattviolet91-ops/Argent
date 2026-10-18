@@ -1149,3 +1149,24 @@ input[type="file"] { max-width: 100%; }
 .field, .form-grid > * { min-width: 0; }
 dialog.sheet { max-width: min(520px, 100vw); overflow-x: hidden; overscroll-behavior: contain; }
 body { overflow-x: clip; }
+
+/* Aperçu d'un relevé : une carte par opération */
+.import-tools { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between; }
+.import-bulk { display: inline-flex; gap: .375rem; align-items: center; font-size: .875rem; }
+.import-list li { padding: .75rem 1rem; display: flex; gap: .75rem; align-items: flex-start; }
+.import-row.is-known { opacity: .55; }
+.import-check input { width: 22px; height: 22px; margin-top: 2px; accent-color: var(--brand-accent); }
+.import-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .375rem; }
+.import-top { display: flex; justify-content: space-between; gap: .75rem; align-items: baseline; }
+.import-label { min-width: 0; overflow-wrap: anywhere; }
+.import-amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.import-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.import-controls select { flex: 1 1 12rem; width: auto; min-height: 38px; padding: .25rem .5rem; }
+.scope-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; flex: none; }
+.scope-switch label { padding: .375rem .875rem; font-size: .875rem; font-weight: 600; cursor: pointer; color: var(--text-muted); }
+.scope-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.scope-switch label:has(input:checked) { background: var(--brand-accent); color: #fff; }
+.scope-switch label:has(input[value="pro"]:checked) { background: var(--accent-strong); }
+.scope-switch label:has(input:focus-visible) { outline: 2px solid var(--accent-strong); outline-offset: -2px; }
+.import-flip { flex: none; }
+.field .scope-switch { align-self: flex-start; }

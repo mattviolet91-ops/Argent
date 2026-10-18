@@ -45,6 +45,7 @@
                         <option value="{{ $key }}" @selected($filters['type'] === $key)>{{ $label }}</option>
                     @endforeach
                     <option value="note-de-frais" @selected($filters['type'] === 'note-de-frais')>Notes de frais</option>
+                    <option value="a-classer" @selected($filters['type'] === 'a-classer')>À classer (perso / pro)</option>
                 </select>
             </div>
             @if ($tagOptions->isNotEmpty())
@@ -67,6 +68,7 @@
     </details>
     <div class="money-actions" style="margin-bottom:1rem">
         <a class="btn btn-secondary btn-sm" href="{{ route('import.create') }}"><x-icon name="upload" /> Importer un relevé</a>
+        @if ($toClassify)<a class="btn btn-sm" href="{{ route('transactions.classify') }}"><x-icon name="check" /> Classer perso / pro ({{ $toClassify }})</a>@endif
         <a class="btn btn-secondary btn-sm" href="{{ route('export') }}"><x-icon name="file" /> Tout télécharger</a>
     </div>
 
@@ -96,8 +98,15 @@
                                 <span class="muted small">{{ $t->category?->name ?? ($t->isTransfer() ? 'Virement' : 'Sans catégorie') }} · {{ $t->account?->name }}@if ($t->source !== 'manual') · {{ \App\Models\MoneyTransaction::SOURCES[$t->source] ?? '' }}@endif
                                     @if ($t->attachments_count) · <x-icon name="paperclip" class="icon icon-inline" /><span class="visually-hidden">justificatif</span>@endif
                                 </span>
-                                @if ($t->tags->isNotEmpty() || $t->isClaim())
+                                @php
+                                    // Perso / pro affiché quand il diffère du compte, ou sur un compte mixte.
+                                    $shownScope = ! $t->isTransfer() && ($t->account?->mixed || ($t->scope && $t->scope !== $t->account?->scope));
+                                @endphp
+                                @if ($t->tags->isNotEmpty() || $t->isClaim() || $shownScope)
                                     <span class="tx-tags">
+                                        @if ($shownScope)
+                                            @if ($t->scope)<span class="badge {{ $t->scope === 'pro' ? 'badge-info' : '' }}">{{ $t->scope === 'pro' ? 'Pro' : 'Perso' }}</span>@else<span class="badge badge-warning">À classer</span>@endif
+                                        @endif
                                         @if ($t->isClaim())<span class="badge {{ $t->claim === 'rembourse' ? 'badge-success' : 'badge-warning' }}">{{ $t->claim === 'rembourse' ? 'Note de frais remboursée' : 'Note de frais' }}</span>@endif
                                         @foreach ($t->tags as $tagItem)<span class="tag-chip" style="background:{{ $tagItem->color }}">{{ $tagItem->name }}</span>@endforeach
                                     </span>

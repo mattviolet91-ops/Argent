@@ -6,7 +6,7 @@
     <div class="page-head">
         <div>
             <h1>Importer un relevé bancaire</h1>
-            <p>Gagnez du temps : toutes les opérations de la banque d'un coup, sans les retaper.</p>
+            <p>Toutes les opérations de la banque d'un coup, sans les retaper : le relevé PDF envoyé chaque mois, ou un export CSV / OFX. Vous classez ensuite chaque opération en perso ou pro.</p>
         </div>
     </div>
 
@@ -17,15 +17,17 @@
                 <label for="account_id">Dans quel compte ?</label>
                 <select id="account_id" name="account_id" required>
                     @foreach ($accountOptions as $account)
-                        <option value="{{ $account->id }}" @selected((string) old('account_id', request('compte')) === (string) $account->id)>{{ $account->name }} ({{ $account->scopeLabel() }})</option>
+                        <option value="{{ $account->id }}" @selected((string) old('account_id', request('compte')) === (string) $account->id)>{{ $account->name }} ({{ $account->mixed ? 'perso + pro' : $account->scopeLabel() }})</option>
                     @endforeach
                 </select>
                 @error('account_id')<span class="error">{{ $message }}</span>@enderror
             </div>
-            <div class="field @error('file') has-error @enderror">
-                <label for="file">Fichier du relevé (CSV ou OFX)</label>
-                <input id="file" type="file" name="file" accept=".csv,.txt,.ofx,.qfx,text/csv" required>
+            <div class="field @error('file') has-error @enderror @error('files_count') has-error @enderror">
+                <label for="files">Relevés (PDF, CSV ou OFX) <span class="muted small">— plusieurs d'un coup possible</span></label>
+                <input id="files" type="file" name="files[]" accept=".pdf,.csv,.txt,.ofx,.qfx,application/pdf,text/csv" multiple required>
                 @error('file')<span class="error">{{ $message }}</span>@enderror
+                @error('files_count')<span class="error">{{ $message }}</span>@enderror
+                @error('files.*')<span class="error">{{ $message }}</span>@enderror
             </div>
         </div>
         <div class="form-actions"><button class="btn" type="submit"><x-icon name="upload" /> Voir l'aperçu</button></div>
@@ -35,11 +37,10 @@
     <div class="card">
         <h2>Où trouver le fichier ?</h2>
         <ol class="howto-list">
-            <li>Ouvrez l'espace client de votre banque sur un ordinateur (ou le site sur le téléphone).</li>
-            <li>Allez dans le compte, puis « Télécharger », « Exporter » ou « Mes opérations ».</li>
-            <li>Choisissez le format <strong>CSV</strong> (ou « Excel / tableur ») ou <strong>OFX</strong> (« Money »), et la période.</li>
-            <li>Choisissez ce fichier ici.</li>
+            <li><strong>Le plus simple :</strong> dans l'app de votre banque, ouvrez « Relevés » (ou « Documents ») et enregistrez le relevé PDF du mois dans Fichiers. Ici, choisissez-le (plusieurs mois d'un coup si vous voulez).</li>
+            <li><strong>Encore plus fiable :</strong> sur le site de la banque, « Télécharger » ou « Exporter » les opérations au format <strong>CSV</strong> (« Excel / tableur ») ou <strong>OFX</strong> (« Money »).</li>
         </ol>
-        <p class="money-note">Les opérations déjà importées sont écartées toutes seules, et celles qui ressemblent à un paiement des devis déjà noté sont décochées. Les catégories choisies sont retenues pour les prochains imports.</p>
+        <p class="money-note">Les opérations déjà importées sont écartées toutes seules (même si deux relevés se recouvrent), et celles qui ressemblent à un paiement des devis déjà noté sont décochées. Vos catégories et vos choix perso / pro sont retenus pour les prochains imports.
+            Un compte où vous payez du perso <strong>et</strong> du pro ? Cochez « Compte mixte » sur ce compte (Comptes → le compte → Modifier).</p>
     </div>
 @endsection

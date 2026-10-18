@@ -89,6 +89,46 @@
   var reopen = document.querySelector('dialog[data-open-on-load]');
   if (reopen && reopen.showModal) { reopen.showModal(); }
 
+  // Perso / pro : « Tout en perso » ou « Tout en pro » (aperçu d'un relevé, page À classer).
+  document.querySelectorAll('[data-scope-all]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var value = button.getAttribute('data-scope-all');
+      document.querySelectorAll('input[data-scope-choice][value="' + value + '"]').forEach(function (radio) { radio.checked = true; });
+    });
+  });
+
+  // Relevé PDF : « Inverser » change le signe affiché du montant.
+  document.querySelectorAll('[data-flip]').forEach(function (box) {
+    box.addEventListener('change', function () {
+      var row = box.closest('[data-import-row]');
+      var amount = row && row.querySelector('[data-amount]');
+      if (!amount) { return; }
+      var text = amount.textContent.replace(/^[+\u2212-]/, '');
+      var positive = (parseInt(amount.getAttribute('data-amount'), 10) > 0) !== box.checked;
+      amount.textContent = (positive ? '+' : '\u2212') + text;
+      amount.classList.toggle('m-pos', positive);
+      amount.classList.toggle('m-neg', !positive);
+    });
+  });
+
+  // Ajout rapide : perso / pro suit le compte choisi (tant qu'on ne l'a pas changé soi-même).
+  var addAccount = document.getElementById('add-account');
+  if (addAccount) {
+    var touched = false;
+    document.querySelectorAll('input[name="scope"][data-quick-scope]').forEach(function (radio) {
+      radio.addEventListener('change', function () { touched = true; });
+    });
+    var follow = function () {
+      if (touched) { return; }
+      var option = addAccount.options[addAccount.selectedIndex];
+      var scope = option ? option.getAttribute('data-scope') : null;
+      var radio = scope && document.querySelector('input[name="scope"][data-quick-scope][value="' + scope + '"]');
+      if (radio) { radio.checked = true; }
+    };
+    addAccount.addEventListener('change', follow);
+    follow();
+  }
+
   // Aperçu d'un relevé : tout cocher / décocher.
   var all = document.querySelector('[data-check-all]');
   if (all) {

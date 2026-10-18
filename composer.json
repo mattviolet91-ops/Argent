@@ -10,7 +10,8 @@
         "dompdf/dompdf": "^3.1",
         "laravel/framework": "^12.0",
         "lbuchs/webauthn": "^2.2",
-        "minishlink/web-push": "^11.0"
+        "minishlink/web-push": "^11.0",
+        "smalot/pdfparser": "2.12.5"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

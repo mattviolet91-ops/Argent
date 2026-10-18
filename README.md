@@ -18,7 +18,11 @@ envoie chaque lundi les paiements reçus et les frais des chantiers.
 - Ajout rapide (dépense, revenu, virement entre comptes), catégories, budgets
   mensuels, objectifs (épargne, encaissé, gain, plafond de dépenses).
 - Dépenses et revenus fixes notés tout seuls, solde prévu en fin de mois.
-- Import de relevé bancaire CSV ou OFX (doublons écartés, catégories apprises).
+- Import de relevés bancaires PDF (celui envoyé par la banque), CSV ou OFX, plusieurs
+  d'un coup (doublons écartés, même si les relevés se recouvrent), catégories apprises.
+- Classement perso / pro de chaque opération : à l'import (proposition d'après vos
+  choix précédents, la catégorie ou le compte), sur chaque mouvement, et page « À
+  classer » pour les comptes mixtes (perso et pro sur le même compte).
 - Abonnements repérés tout seuls dans les relevés (même commerçant, même montant,
   rythme régulier), proposés pour les Fixes.
 - Tendances : « ce mois-ci, vous dépensez 30 % de plus en restaurants que

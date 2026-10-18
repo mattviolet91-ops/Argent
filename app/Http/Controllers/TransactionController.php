@@ -9,6 +9,7 @@ use App\Models\MoneyCategory;
 use App\Models\MoneyTag;
 use App\Models\MoneyTransaction;
 use App\Services\MoneyAlertService;
+use App\Services\MoneyImportService;
 use App\Services\PrivateFiles;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -46,6 +47,7 @@ class TransactionController extends Controller
             ->when(ctype_digit($category), fn (Builder $q) => $q->where('category_id', (int) $category))
             ->when(isset(self::TYPES[$type]), fn (Builder $q) => $q->where('kind', $type))
             ->when($type === 'note-de-frais', fn (Builder $q) => $q->whereNotNull('claim'))
+            ->when($type === 'a-classer', fn (Builder $q) => $q->whereIn('money_transactions.id', ClassifyController::pending()->select('id')))
             ->when($tag, fn (Builder $q) => $q->whereHas('tags', fn (Builder $t) => $t->whereKey($tag)))
             ->when($search, fn (Builder $q) => $q->where(fn (Builder $w) => $w->where('label', 'like', '%'.$search.'%')->orWhere('notes', 'like', '%'.$search.'%')));
 
@@ -67,6 +69,7 @@ class TransactionController extends Controller
             'accountOptions' => $this->accountOptions(),
             'categoryOptions' => $this->categoryOptions(),
             'allAccounts' => MoneyAccount::query()->ordered()->get(),
+            'toClassify' => ClassifyController::pending()->count(),
         ]);
     }
 
@@ -81,6 +84,7 @@ class TransactionController extends Controller
             'notes' => ['nullable', 'string', 'max:500'],
             'occurred_on' => ['required', 'date'],
             'tags' => ['nullable', 'string', 'max:300'],
+            'scope' => ['nullable', Rule::in(['perso', 'pro'])],
             'attachment' => ['nullable', ...PrivateFiles::rules()],
         ], [
             'to_account_id.required_if' => 'Choisissez le compte qui reçoit l\'argent.',
@@ -95,18 +99,20 @@ class TransactionController extends Controller
             $category = $this->category($data['category_id'] ?? null, $data['type']);
             $signed = $data['type'] === 'expense' ? -$amount : $amount;
             $claim = $data['type'] === 'expense' && $request->boolean('claim');
+            $label = trim((string) ($data['label'] ?? '')) ?: ($category?->name ?? self::TYPES[$data['type']]);
+            $scope = $this->scopeFor(MoneyAccount::query()->findOrFail($data['account_id']), $claim ? 'pro' : ($data['scope'] ?? null), $label);
             $transaction = MoneyTransaction::query()->create([
                 'account_id' => $data['account_id'],
                 'occurred_on' => $data['occurred_on'],
                 'amount' => $signed,
                 'kind' => MoneyTransaction::kindFor($signed),
                 'category_id' => $category?->id,
-                'label' => trim((string) ($data['label'] ?? '')) ?: ($category?->name ?? self::TYPES[$data['type']]),
+                'label' => $label,
                 'notes' => $data['notes'] ?? null,
                 'source' => 'manual',
                 // Note de frais : dépense pro payée avec un compte perso, à se faire rembourser.
                 'claim' => $claim ? 'a_rembourser' : null,
-                'scope' => $claim ? 'pro' : null,
+                'scope' => $scope,
             ]);
             $message = $claim ? 'Note de frais ajoutée : à vous faire rembourser.' : ($data['type'] === 'expense' ? 'Dépense ajoutée.' : 'Revenu ajouté.');
         }
@@ -141,6 +147,7 @@ class TransactionController extends Controller
             'account_id' => ['sometimes', 'integer', Rule::exists('money_accounts', 'id')],
             'occurred_on' => ['sometimes', 'date'],
             'tags' => ['nullable', 'string', 'max:300'],
+            'scope' => ['nullable', Rule::in(['perso', 'pro'])],
         ], [], ['label' => 'libellé', 'tags' => 'chantier / projet']);
         // Étiquettes de chantier ou de projet : sur tous les mouvements, même venus des devis.
         $transaction->tags()->sync(MoneyTag::idsFromInput($data['tags'] ?? null));
@@ -148,7 +155,10 @@ class TransactionController extends Controller
         // Paiement ou frais de l'app de devis : seuls la catégorie, le libellé et la note se changent ici.
         if ($transaction->source === 'devis') {
             $category = $this->category($data['category_id'] ?? null, MoneyTransaction::kindFor($transaction->amount));
-            $transaction->update(['category_id' => $category?->id, 'label' => $data['label'], 'notes' => $data['notes'] ?? null]);
+            $transaction->update([
+                'category_id' => $category?->id, 'label' => $data['label'], 'notes' => $data['notes'] ?? null,
+                'scope' => $request->has('scope') ? $this->scopeFor($transaction->account, $data['scope'] ?? null, $data['label']) : $transaction->scope,
+            ]);
             app(MoneyAlertService::class)->check();
 
             return redirect()->route('transactions.index')->with('status', 'Mouvement modifié.');
@@ -184,10 +194,13 @@ class TransactionController extends Controller
         $category = $this->category($data['category_id'] ?? null, $type);
         $claim = $type === 'expense' && $request->boolean('claim');
         if ($claim && ! $transaction->isClaim()) {
-            $transaction->fill(['claim' => 'a_rembourser', 'scope' => 'pro']);
+            $transaction->fill(['claim' => 'a_rembourser']);
         } elseif (! $claim && $transaction->isClaim()) {
-            $transaction->fill(['claim' => null, 'scope' => null, 'claim_settled_on' => null, 'claim_key' => null]);
+            $transaction->fill(['claim' => null, 'claim_settled_on' => null, 'claim_key' => null]);
         }
+        // Perso ou pro (une note de frais est toujours pro).
+        $account = MoneyAccount::query()->find($data['account_id'] ?? $transaction->account_id) ?? $transaction->account;
+        $transaction->fill(['scope' => $this->scopeFor($account, $claim ? 'pro' : ($data['scope'] ?? $transaction->scope), $data['label'])]);
         $transaction->update([
             'account_id' => $data['account_id'] ?? $transaction->account_id,
             'occurred_on' => $data['occurred_on'] ?? $transaction->occurred_on,
@@ -247,6 +260,23 @@ class TransactionController extends Controller
 
             return $rows[0];
         });
+    }
+
+    /**
+     * Perso ou pro à garder sur l'opération : toujours sur un compte mixte, sinon seulement
+     * s'il diffère du compte. Le choix est retenu (mot du libellé → perso ou pro).
+     */
+    private function scopeFor(?MoneyAccount $account, ?string $scope, string $label): ?string
+    {
+        if (! $account || ! in_array($scope, ['perso', 'pro'], true)) {
+            return null;
+        }
+        if (! $account->mixed && $scope === $account->scope) {
+            return null;
+        }
+        app(MoneyImportService::class)->learnScope($label, $scope);
+
+        return $scope;
     }
 
     /** L'autre moitié d'un virement. */

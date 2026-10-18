@@ -72,6 +72,7 @@ class DashboardController extends Controller
             'alerts' => app(MoneyAlertService::class)->current(),
             'trends' => $trends->notable($scope, limit: 3),
             'subscriptions' => $subscriptions->count(),
+            'toClassify' => ClassifyController::pending()->count(),
             'people' => $people,
             'owedToMe' => (int) $people->sum(fn (MoneyPerson $p) => max(0, $p->balance())),
             'iOwe' => (int) $people->sum(fn (MoneyPerson $p) => max(0, -$p->balance())),

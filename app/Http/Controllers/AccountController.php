@@ -107,6 +107,8 @@ class AccountController extends Controller
             $data['opening_balance'] = -$data['opening_balance'];
         }
         $data['alert_below'] = $this->amount($request, 'alert_below', positive: false, required: false);
+        // Compte mixte : perso et pro sur le même compte, chaque opération est classée.
+        $data['mixed'] = $request->boolean('mixed');
 
         return $data;
     }

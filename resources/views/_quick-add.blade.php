@@ -29,7 +29,7 @@
                     <label for="add-account"><span data-when="expense income">Compte</span><span data-when="transfer">Depuis le compte</span></label>
                     <select id="add-account" name="account_id">
                         @foreach ($accountOptions as $account)
-                            <option value="{{ $account->id }}" @selected((string) $defaultAccount === (string) $account->id)>{{ $account->name }} ({{ $account->scopeLabel() }})</option>
+                            <option value="{{ $account->id }}" data-scope="{{ $account->scope }}" @selected((string) $defaultAccount === (string) $account->id)>{{ $account->name }} ({{ $account->mixed ? 'perso + pro' : $account->scopeLabel() }})</option>
                         @endforeach
                     </select>
                     @error('account_id')<span class="error">{{ $message }}</span>@enderror
@@ -43,6 +43,14 @@
                         @endforeach
                     </select>
                     @error('to_account_id')<span class="error">{{ $message }}</span>@enderror
+                </div>
+                <div class="field" data-when="expense income">
+                    <span class="label">Compté en</span>
+                    <div class="scope-switch" role="radiogroup" aria-label="Perso ou pro">
+                        @foreach (['perso' => 'Perso', 'pro' => 'Pro'] as $key => $label)
+                            <label><input type="radio" name="scope" value="{{ $key }}" data-quick-scope @checked(old('scope') === $key)> {{ $label }}</label>
+                        @endforeach
+                    </div>
                 </div>
                 <div class="field @error('category_id') has-error @enderror" data-when="expense income">
                     <label for="add-category">Catégorie</label>

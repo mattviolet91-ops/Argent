@@ -36,6 +36,12 @@
         </div>
     @endif
 
+    @if ($toClassify)
+        <a class="alert alert-info money-alert" href="{{ route('transactions.classify') }}">
+            <strong>{{ $toClassify }} opération{{ $toClassify > 1 ? 's' : '' }} à classer</strong> en perso ou pro (compte mixte).
+        </a>
+    @endif
+
     @if ($subscriptions)
         <a class="alert alert-info money-alert" href="{{ route('recurrings.index') }}#abonnements">
             <strong>{{ $subscriptions }} abonnement{{ $subscriptions > 1 ? 's' : '' }} repéré{{ $subscriptions > 1 ? 's' : '' }}</strong> dans vos relevés : {{ $subscriptions > 1 ? 'les ' : 'l\'' }}ajouter aux Fixes ?

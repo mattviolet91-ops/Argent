@@ -63,6 +63,17 @@
                         @error('category_id')<span class="error">{{ $message }}</span>@enderror
                     </div>
                 @endunless
+                @unless ($transaction->isTransfer())
+                    @php $currentScope = old('scope', $transaction->scope ?? ($transaction->account?->mixed ? null : $transaction->account?->scope)); @endphp
+                    <div class="field">
+                        <span class="label">Compté en @if ($transaction->account?->mixed && ! $transaction->scope)<span class="badge badge-warning">à classer</span>@endif</span>
+                        <div class="scope-switch" role="radiogroup" aria-label="Perso ou pro">
+                            @foreach (['perso' => 'Perso', 'pro' => 'Pro'] as $key => $scopeLabel)
+                                <label><input type="radio" name="scope" value="{{ $key }}" @checked($currentScope === $key)> {{ $scopeLabel }}</label>
+                            @endforeach
+                        </div>
+                    </div>
+                @endunless
                 <x-field name="label" label="Libellé" :value="$transaction->label" required maxlength="160" />
                 <div class="field @error('tags') has-error @enderror">
                     <label for="tags">Chantier / projet</label>

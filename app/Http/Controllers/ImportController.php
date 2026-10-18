@@ -40,19 +40,58 @@ class ImportController extends Controller
 
     public function preview(Request $request): RedirectResponse
     {
+        // Un ou plusieurs relevés d'un coup (CSV, OFX ou PDF).
+        $files = array_values(array_filter(array_merge(
+            $request->hasFile('files') ? (array) $request->file('files') : [],
+            $request->hasFile('file') ? [$request->file('file')] : [],
+        )));
+        $request->merge(['files_count' => count($files)]);
         $request->validate([
             'account_id' => ['required', 'integer', Rule::exists('money_accounts', 'id')],
-            'file' => ['required', 'file', 'max:4096', 'mimes:csv,txt,ofx,qfx,xml'],
-        ], ['file.required' => 'Choisissez le fichier du relevé.', 'file.mimes' => 'Le fichier doit être un CSV (export Excel de la banque) ou un OFX.'], ['account_id' => 'compte']);
+            'files_count' => ['integer', 'min:1', 'max:24'],
+            'files.*' => ['file', 'max:8192', 'mimes:csv,txt,ofx,qfx,xml,pdf'],
+            'file' => ['nullable', 'file', 'max:8192', 'mimes:csv,txt,ofx,qfx,xml,pdf'],
+        ], [
+            'files_count.min' => 'Choisissez le fichier du relevé.',
+            'files_count.max' => '24 fichiers au plus à la fois.',
+            'files.*.mimes' => 'Les relevés doivent être en PDF, CSV (export Excel de la banque) ou OFX.',
+            'file.mimes' => 'Les relevés doivent être en PDF, CSV (export Excel de la banque) ou OFX.',
+            'files.*.max' => 'Fichier trop lourd (8 Mo au plus).',
+        ], ['account_id' => 'compte']);
 
-        $rows = $this->importer->parse((string) file_get_contents($request->file('file')->getRealPath()));
-        if ($rows === []) {
-            throw ValidationException::withMessages(['file' => 'Aucune opération reconnue. Exportez le relevé en CSV (ou OFX) depuis l\'espace en ligne de la banque, avec les colonnes date, libellé et montant (ou débit / crédit).']);
+        // Plusieurs relevés qui se recouvrent : une opération n'est gardée qu'une fois
+        // (autant de fois qu'elle apparaît dans un même fichier, pas la somme des fichiers).
+        $account = MoneyAccount::query()->findOrFail((int) $request->input('account_id'));
+        $rows = [];
+        $kept = [];
+        $unread = [];
+        foreach ($files as $file) {
+            $parsed = $this->importer->parse((string) file_get_contents($file->getRealPath()));
+            if ($parsed === []) {
+                $unread[] = $file->getClientOriginalName();
+            }
+            $counts = [];
+            foreach ($parsed as $row) {
+                $hash = $this->importer->hash($account, $row);
+                $counts[$hash] = ($counts[$hash] ?? 0) + 1;
+                if ($counts[$hash] > ($kept[$hash] ?? 0)) {
+                    $kept[$hash] = $counts[$hash];
+                    $rows[] = $row;
+                }
+            }
         }
+        if ($rows === []) {
+            throw ValidationException::withMessages(['file' => 'Aucune opération reconnue. Un relevé PDF doit être celui de la banque (pas une photo ou un scan) ; sinon, exportez les opérations en CSV (ou OFX) depuis l\'espace en ligne de la banque.']);
+        }
+        // Plusieurs relevés : remis dans l'ordre des dates (un seul : l'ordre du fichier).
+        if (count($files) > 1) {
+            usort($rows, fn ($a, $b) => strcmp($a['date'], $b['date']));
+        }
+        $rows = array_slice($rows, 0, MoneyImportService::MAX_ROWS);
 
         $this->forget($request);
         $path = 'argent-imports/'.Str::random(32).'.json';
-        Storage::disk('local')->put($path, json_encode(['account_id' => (int) $request->input('account_id'), 'rows' => $rows]));
+        Storage::disk('local')->put($path, json_encode(['account_id' => $account->id, 'rows' => $rows, 'unread' => $unread]));
         $request->session()->put(self::SESSION_KEY, $path);
 
         return redirect()->route('import.show');
@@ -72,6 +111,8 @@ class ImportController extends Controller
             'rows' => $rows,
             'counts' => collect($rows)->countBy('status'),
             'categoryOptions' => $this->categoryOptions(),
+            'unread' => (array) ($data['unread'] ?? []),
+            'guessed' => collect($rows)->contains('guessed', true),
         ]);
     }
 
@@ -85,16 +126,25 @@ class ImportController extends Controller
         $rows = $this->importer->preview($account, $data['rows']);
         $selected = array_map('intval', array_keys((array) $request->input('import', [])));
         $chosen = (array) $request->input('category', []);
+        $scopes = (array) $request->input('scope', []);
+        $flips = (array) $request->input('flip', []);
         $categories = MoneyCategory::query()->pluck('type', 'id');
 
         $created = 0;
         $changes = [];
-        DB::transaction(function () use ($rows, $selected, $chosen, $categories, $account, &$created, &$changes) {
+        DB::transaction(function () use ($rows, $selected, $chosen, $scopes, $flips, $categories, $account, &$created, &$changes) {
             foreach ($selected as $index) {
                 $row = $rows[$index] ?? null;
                 if (! $row || $row['status'] === 'known') {
                     continue;
                 }
+                // Relevé PDF : le sens (entrée / sortie) deviné peut être inversé dans l'aperçu.
+                if (! empty($row['guessed']) && ! empty($flips[$index])) {
+                    $row['amount'] = -$row['amount'];
+                }
+                // Perso ou pro : gardé sur l'opération (toujours pour un compte mixte, sinon s'il diffère du compte).
+                $scope = in_array($scopes[$index] ?? null, ['perso', 'pro'], true) ? $scopes[$index] : $row['scope'];
+                $explicit = $account->mixed || $scope !== $account->scope;
                 $categoryId = (int) ($chosen[$index] ?? 0) ?: null;
                 // Catégorie de revenu sur une dépense (ou l'inverse) : ignorée.
                 if ($categoryId && ($categories[$categoryId] ?? null) !== MoneyTransaction::kindFor($row['amount'])) {
@@ -110,7 +160,11 @@ class ImportController extends Controller
                     'source' => 'import',
                     'import_hash' => $row['hash'],
                     'recurring_id' => $row['status'] === 'price' ? $row['recurring_id'] : null,
+                    'scope' => $explicit ? $scope : null,
                 ]);
+                if ($explicit) {
+                    $this->importer->learnScope($row['label'], $scope);
+                }
                 // Abonnement à un autre prix : il remplace le prélèvement prévu, et la dépense fixe prend le nouveau prix.
                 if ($row['status'] === 'price') {
                     MoneyTransaction::query()->whereKey($row['replaces'])->where('source', 'recurring')->first()?->delete();
