@@ -129,6 +129,33 @@
     follow();
   }
 
+  // Bouton « Copier » (script d'un widget…) : le texte de l'élément visé.
+  document.querySelectorAll('[data-copy]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var target = document.querySelector(button.getAttribute('data-copy'));
+      if (!target) { return; }
+      var value = target.value !== undefined ? target.value : target.textContent;
+      var done = function () {
+        var label = button.innerHTML;
+        button.textContent = button.getAttribute('data-copied') || 'Copié';
+        setTimeout(function () { button.innerHTML = label; }, 2500);
+      };
+      var fallback = function () {
+        var details = target.closest('details');
+        if (details) { details.open = true; }
+        target.focus();
+        target.select();
+        target.setSelectionRange(0, value.length);
+        try { document.execCommand('copy'); done(); } catch (e) { /* sélectionné : « Copier » à la main */ }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(done, fallback);
+      } else {
+        fallback();
+      }
+    });
+  });
+
   // Aperçu d'un relevé : tout cocher / décocher.
   var all = document.querySelector('[data-check-all]');
   if (all) {

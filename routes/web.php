@@ -117,6 +117,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/hors-ligne/donnees', [Controllers\OfflineController::class, 'data'])->middleware('throttle:60,1')->name('offline.data');
         Route::post('/hors-ligne/envoyer', [Controllers\OfflineController::class, 'sync'])->middleware('throttle:30,1')->name('offline.sync');
 
+        Route::post('/widgets', [Controllers\WidgetController::class, 'store'])->middleware('throttle:10,1')->name('settings.widgets.store');
+        Route::get('/widgets/{widget}/installer', [Controllers\WidgetController::class, 'install'])->whereNumber('widget')->name('settings.widgets.install');
+        Route::post('/widgets/installe', [Controllers\WidgetController::class, 'done'])->name('settings.widgets.done');
+        Route::put('/widgets/{widget}', [Controllers\WidgetController::class, 'update'])->whereNumber('widget')->name('settings.widgets.update');
+        Route::delete('/widgets/{widget}', [Controllers\WidgetController::class, 'destroy'])->whereNumber('widget')->name('settings.widgets.destroy');
+
         Route::get('/releve', [Controllers\ImportController::class, 'create'])->name('import.create');
         Route::post('/releve/apercu', [Controllers\ImportController::class, 'preview'])->middleware('throttle:20,1')->name('import.preview');
         Route::get('/releve/apercu', [Controllers\ImportController::class, 'show'])->name('import.show');

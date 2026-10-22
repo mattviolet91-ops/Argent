@@ -49,6 +49,9 @@ envoie chaque lundi les paiements reçus et les frais des chantiers.
   s'ouvre avec le code sur un résumé gardé chiffré sur le téléphone (AES-GCM, clé
   de l'appareil chiffrée avec le code), et les dépenses notées sont ajoutées au
   retour du réseau, sans doublon. 10 codes faux hors ligne effacent ces données.
+- Widgets iPhone (écran d'accueil et écran verrouillé) avec l'app gratuite Scriptable :
+  solde et courbe sur 30 jours, mois en cours, budgets, échéances. Une clé par widget,
+  créée avec le code Argent, montrée une fois et retirable ; montants masquables.
 - Lien avec l'app de devis : paiements et frais copiés chaque lundi (clé en lecture
   seule), bilan de la semaine figé et notification.
 - Mode discret (montants floutés), export Excel (CSV), sauvegarde chaque nuit,

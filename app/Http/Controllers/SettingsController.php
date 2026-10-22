@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ActivityLog;
 use App\Models\MoneyAccount;
 use App\Models\MoneyTransaction;
+use App\Models\MoneyWidgetKey;
 use App\Models\WebauthnCredential;
 use App\Services\ActivityLogger;
 use App\Services\BackupService;
@@ -43,6 +44,7 @@ class SettingsController extends Controller
             'backups' => $backups->list()->take(10),
             'journal' => ActivityLog::query()->latest('id')->limit(15)->get(),
             'faceIdDevices' => WebauthnCredential::query()->where('user_id', auth()->id())->latest('id')->get(),
+            'widgets' => MoneyWidgetKey::query()->latest('id')->get(),
             'accounts' => MoneyAccount::query()->active()->ordered()->get(),
             'syncAccount' => $sync->account(),
             'cashAccount' => $sync->cashAccount(),

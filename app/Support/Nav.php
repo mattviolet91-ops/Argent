@@ -36,7 +36,7 @@ final class Nav
             ],
             'Outils' => [
                 ['import.create', 'Importer un relevé', 'upload', 'import.*'],
-                ['settings', 'Réglages', 'settings', 'settings'],
+                ['settings', 'Réglages', 'settings', 'settings*'],
             ],
         ];
     }

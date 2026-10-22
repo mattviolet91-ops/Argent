@@ -118,6 +118,75 @@
         <button class="btn btn-sm btn-danger-outline" type="button" data-offline-off data-url="{{ route('offline.deactivate') }}" hidden style="margin-top:.75rem">Désactiver et effacer de cet appareil</button>
     </div>
 
+    <div class="card" id="widgets">
+        <h2>Widgets iPhone</h2>
+        <p class="small muted">Le solde, le mois en cours, les budgets et les prochaines échéances sur l'écran d'accueil ou l'écran verrouillé, sans ouvrir l'app.
+            Apple ne permet pas de widget à une app web : il passe par l'app gratuite <strong>Scriptable</strong>, qui lit un résumé d'Argent.</p>
+        <p class="small muted">Un widget s'affiche <strong>sans le code Argent</strong> : qui voit votre téléphone le voit aussi. Pour plus de discrétion, décochez « Montrer les montants » (pourcentages et tendances seulement).
+            Chaque widget a sa clé, qui permet seulement de lire ce résumé : téléphone perdu ? Retirez-la ici.</p>
+        @if ($widgets->isNotEmpty())
+            <ul class="stat-list widget-list">
+                @foreach ($widgets as $widget)
+                    <li>
+                        <span>{{ $widget->name }} <span class="badge">{{ $widget->viewLabel() }}</span>@unless ($widget->show_amounts) <span class="badge">montants masqués</span>@endunless
+                            <span class="muted small">· créé le {{ $widget->created_at->format('d/m/Y') }} · {{ $widget->last_used_at ? 'lu le '.$widget->last_used_at->format('d/m/Y à H:i') : 'pas encore utilisé' }}</span></span>
+                        <span class="widget-actions">
+                            <details class="widget-edit">
+                                <summary class="link-btn small">Modifier</summary>
+                                <form method="POST" action="{{ route('settings.widgets.update', $widget) }}">
+                                    @csrf
+                                    @method('PUT')
+                                    <div class="field">
+                                        <label for="widget-view-{{ $widget->id }}">Afficher</label>
+                                        <select id="widget-view-{{ $widget->id }}" name="view">
+                                            @foreach (\App\Services\MoneyStatsService::SCOPES as $value => $label)
+                                                <option value="{{ $value }}" @selected($widget->scope === $value)>{{ $value === 'all' ? 'Tout (perso + pro)' : $label }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <label class="check"><input type="checkbox" name="amounts" value="1" @checked($widget->show_amounts)> <span>Montrer les montants</span></label>
+                                    <button class="btn btn-sm" type="submit">Enregistrer</button>
+                                </form>
+                            </details>
+                            <form method="POST" action="{{ route('settings.widgets.destroy', $widget) }}" data-confirm="Retirer ce widget ? Sa clé ne marchera plus (supprimez-le aussi de l'écran d'accueil).">
+                                @csrf
+                                @method('DELETE')
+                                <button class="link-btn small" type="submit">Retirer</button>
+                            </form>
+                        </span>
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+        @php $widgetErrors = $errors->hasAny(['widget_name', 'widget_view', 'widget_code']); @endphp
+        <form method="POST" action="{{ route('settings.widgets.store') }}">
+            @csrf
+            <h3 style="margin-top:1rem">{{ $widgets->isEmpty() ? 'Créer un widget' : 'Un autre widget' }}</h3>
+            <div class="form-grid cols-2">
+                <div class="field @error('widget_name') has-error @enderror">
+                    <label for="widget_name">Nom <span class="muted small">(pour le retrouver ici)</span></label>
+                    <input id="widget_name" type="text" name="widget_name" maxlength="40" placeholder="iPhone" value="{{ $widgetErrors ? old('widget_name') : '' }}">
+                    @error('widget_name')<span class="error">{{ $message }}</span>@enderror
+                </div>
+                <div class="field">
+                    <label for="widget_view">Afficher</label>
+                    <select id="widget_view" name="widget_view">
+                        @foreach (\App\Services\MoneyStatsService::SCOPES as $value => $label)
+                            <option value="{{ $value }}" @selected(($widgetErrors ? old('widget_view') : 'all') === $value)>{{ $value === 'all' ? 'Tout (perso + pro)' : $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="field @error('widget_code') has-error @enderror">
+                    <label for="widget_code">Votre code Argent</label>
+                    <input id="widget_code" class="pin-input" type="password" name="widget_code" inputmode="numeric" maxlength="8" autocomplete="off" required>
+                    @error('widget_code')<span class="error">{{ $message }}</span>@enderror
+                </div>
+            </div>
+            <label class="check" style="margin-top:.75rem"><input type="checkbox" name="widget_amounts" value="1" @checked(! $widgetErrors || old('widget_amounts'))> <span>Montrer les montants <span class="muted small">(sinon : pourcentages et tendances seulement)</span></span></label>
+            <div class="form-actions"><button class="btn" type="submit"><x-icon name="phone" /> Créer le widget</button></div>
+        </form>
+    </div>
+
     <div class="card">
         <h2>Mettre à jour maintenant</h2>
         <p class="small muted">Sans attendre lundi : paiements et frais de l'app de devis, et dépenses fixes arrivées à échéance.</p>
