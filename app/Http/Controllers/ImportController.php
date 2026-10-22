@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\ReadsMoneyInput;
 use App\Models\MoneyAccount;
 use App\Models\MoneyCategory;
 use App\Models\MoneyRecurring;
+use App\Models\MoneyTag;
 use App\Models\MoneyTransaction;
 use App\Services\ActivityLogger;
 use App\Services\MoneyAlertService;
@@ -113,6 +114,7 @@ class ImportController extends Controller
             'categoryOptions' => $this->categoryOptions(),
             'unread' => (array) ($data['unread'] ?? []),
             'guessed' => collect($rows)->contains('guessed', true),
+            'tagNames' => MoneyTag::query()->whereNull('archived_at')->orderBy('name')->pluck('name'),
         ]);
     }
 
@@ -128,11 +130,13 @@ class ImportController extends Controller
         $chosen = (array) $request->input('category', []);
         $scopes = (array) $request->input('scope', []);
         $flips = (array) $request->input('flip', []);
+        $tags = (array) $request->input('tag', []);
         $categories = MoneyCategory::query()->pluck('type', 'id');
 
         $created = 0;
+        $tagged = 0;
         $changes = [];
-        DB::transaction(function () use ($rows, $selected, $chosen, $scopes, $flips, $categories, $account, &$created, &$changes) {
+        DB::transaction(function () use ($rows, $selected, $chosen, $scopes, $flips, $tags, $categories, $account, &$created, &$tagged, &$changes) {
             foreach ($selected as $index) {
                 $row = $rows[$index] ?? null;
                 if (! $row || $row['status'] === 'known') {
@@ -150,7 +154,7 @@ class ImportController extends Controller
                 if ($categoryId && ($categories[$categoryId] ?? null) !== MoneyTransaction::kindFor($row['amount'])) {
                     $categoryId = null;
                 }
-                MoneyTransaction::query()->create([
+                $transaction = MoneyTransaction::query()->create([
                     'account_id' => $account->id,
                     'occurred_on' => $row['date'],
                     'amount' => $row['amount'],
@@ -164,6 +168,12 @@ class ImportController extends Controller
                 ]);
                 if ($explicit) {
                     $this->importer->learnScope($row['label'], $scope);
+                }
+                // Chantier ou projet (créé s'il n'existe pas encore).
+                $tagIds = is_string($tags[$index] ?? null) ? MoneyTag::idsFromInput(mb_substr($tags[$index], 0, 300)) : [];
+                if ($tagIds !== []) {
+                    $transaction->tags()->sync($tagIds);
+                    $tagged++;
                 }
                 // Abonnement à un autre prix : il remplace le prélèvement prévu, et la dépense fixe prend le nouveau prix.
                 if ($row['status'] === 'price') {
@@ -190,6 +200,7 @@ class ImportController extends Controller
 
         return redirect()->route('transactions.index', ['compte' => $account->id, 'periode' => 'tout'])
             ->with('status', $created.' opération'.($created > 1 ? 's importées' : ' importée').'.'
+                .($tagged ? ' '.$tagged.' mise'.($tagged > 1 ? 's' : '').' sur un chantier.' : '')
                 .($changes ? ' Nouveau prix pour '.implode(', ', array_map(fn ($c) => '« '.$c['label'].' »', $changes)).' : les Fixes sont à jour.' : ''));
     }
 

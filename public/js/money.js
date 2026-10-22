@@ -111,6 +111,33 @@
     });
   });
 
+  // Aperçu d'un relevé : un chantier sur toutes les sorties pro cochées (chaque ligne reste modifiable).
+  var tagApply = document.querySelector('[data-tag-apply]');
+  if (tagApply) {
+    tagApply.addEventListener('click', function () {
+      var input = document.querySelector('[data-tag-bulk]');
+      var status = document.querySelector('[data-tag-status]');
+      var value = input.value.trim();
+      if (!value) { input.focus(); return; }
+      var count = 0;
+      document.querySelectorAll('[data-import-row]').forEach(function (row) {
+        var box = row.querySelector('[data-check-item]');
+        var pro = row.querySelector('input[data-scope-choice][value="pro"]');
+        var field = row.querySelector('[data-import-tag]');
+        var amount = row.querySelector('[data-amount]');
+        var flip = row.querySelector('[data-flip]');
+        if (!box || !box.checked || !pro || !pro.checked || !field || !amount) { return; }
+        var expense = (parseInt(amount.getAttribute('data-amount'), 10) < 0) !== Boolean(flip && flip.checked);
+        if (!expense) { return; }
+        field.value = value;
+        count++;
+      });
+      if (status) {
+        status.textContent = count ? '« ' + value + ' » mis sur ' + count + ' sortie' + (count > 1 ? 's' : '') + '.' : 'Aucune sortie pro cochée.';
+      }
+    });
+  }
+
   // Ajout rapide : perso / pro suit le compte choisi (tant qu'on ne l'a pas changé soi-même).
   var addAccount = document.getElementById('add-account');
   if (addAccount) {

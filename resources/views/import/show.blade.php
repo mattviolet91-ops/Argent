@@ -13,7 +13,7 @@
     <div class="page-head">
         <div>
             <h1>Aperçu : {{ count($rows) }} opération{{ count($rows) > 1 ? 's' : '' }}</h1>
-            <p>Compte « {{ $account->name }} »{{ $account->mixed ? ' (mixte)' : '' }}. Vérifiez, choisissez la catégorie et <strong>perso ou pro</strong> pour chaque opération, puis importez les lignes cochées.</p>
+            <p>Compte « {{ $account->name }} »{{ $account->mixed ? ' (mixte)' : '' }}. Vérifiez, choisissez la catégorie, <strong>perso ou pro</strong> et, si besoin, le <strong>chantier</strong> de chaque opération, puis importez les lignes cochées.</p>
         </div>
     </div>
 
@@ -40,6 +40,13 @@
                 <button class="btn btn-sm btn-secondary" type="button" data-scope-all="pro">Pro</button>
             </span>
             <span class="small muted">Entrées : <x-money-amount :value="$selected->where('amount', '>', 0)->sum('amount')" /> · Sorties : <x-money-amount :value="-$selected->where('amount', '<', 0)->sum('amount')" /></span>
+            <div class="import-tag-bulk">
+                <label for="bulk-tag">Chantier</label>
+                <input id="bulk-tag" type="text" list="import-tag-list" maxlength="60" autocomplete="off" placeholder="ex. Dupont" data-tag-bulk>
+                <button class="btn btn-sm btn-secondary" type="button" data-tag-apply><x-icon name="tag" /> Sur toutes les sorties pro cochées</button>
+                <span class="small muted" data-tag-status role="status"></span>
+            </div>
+            <datalist id="import-tag-list">@foreach ($tagNames as $tagName)<option value="{{ $tagName }}"></option>@endforeach</datalist>
         </div>
 
         <ul class="list import-list">
@@ -80,6 +87,7 @@
                                     @endforeach
                                 </div>
                                 @if ($account->mixed && $row['scope_hint'] === 'account')<span class="badge badge-warning">à vérifier</span>@endif
+                                <input class="import-tag" type="text" name="tag[{{ $i }}]" list="import-tag-list" maxlength="300" autocomplete="off" placeholder="Chantier" aria-label="Chantier ou projet (facultatif)" data-import-tag>
                                 @if ($row['guessed'])
                                     <label class="check small import-flip"><input type="checkbox" name="flip[{{ $i }}]" value="1" data-flip> <span>Inverser</span></label>
                                 @endif

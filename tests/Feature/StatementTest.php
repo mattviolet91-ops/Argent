@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\MoneyAccount;
 use App\Models\MoneyCategory;
 use App\Models\MoneyScopeRule;
+use App\Models\MoneyTag;
 use App\Models\MoneyTransaction;
 use App\Models\User;
 use App\Services\MoneyStatsService;
@@ -119,6 +120,37 @@ class StatementTest extends TestCase
 
         $rows = $this->get(route('import.show'))->assertOk()->viewData('rows');
         $this->assertSame(['2026-09-28', '2026-09-30', '2026-10-02'], array_column($rows, 'date'));
+    }
+
+    public function test_statement_lines_can_be_put_on_a_chantier(): void
+    {
+        $dupont = MoneyTag::query()->create(['name' => 'Dupont', 'color' => '#2563EB']);
+        MoneyTag::query()->create(['name' => 'Ancien chantier', 'color' => '#475569', 'archived_at' => now()]);
+        $csv = "Date;Libellé;Montant\n02/10/2026;CB POINT P;-412,30\n03/10/2026;CB BRICO DEPOT;-89,90\n05/10/2026;CB LECLERC;-54,10\n09/10/2026;VIR MARTIN ACOMPTE;1500,00\n";
+        $this->post(route('import.preview'), ['account_id' => $this->account->id, 'files' => [UploadedFile::fake()->createWithContent('octobre.csv', $csv)]]);
+        $this->get(route('import.show'))->assertOk()
+            ->assertSee('Sur toutes les sorties pro cochées')
+            ->assertSee('<option value="Dupont">', false)
+            ->assertDontSee('<option value="Ancien chantier">', false);
+
+        $this->post(route('import.store'), [
+            'import' => [0 => 1, 1 => 1, 2 => 1, 3 => 1],
+            'scope' => [0 => 'pro', 1 => 'pro', 2 => 'perso', 3 => 'pro'],
+            // Chantier existant (majuscules différentes), nouveau chantier créé à la volée, rien, et une entrée.
+            'tag' => [0 => 'dupont', 1 => 'Martin', 2 => '', 3 => 'Martin'],
+        ])->assertSessionHas('status', fn ($status) => str_contains($status, '3 mises sur un chantier'));
+
+        $tagsOf = fn (string $label) => MoneyTransaction::query()->where('label', $label)->sole()->tags->pluck('name')->all();
+        $this->assertSame(['Dupont'], $tagsOf('CB POINT P'));
+        $this->assertSame(['Martin'], $tagsOf('CB BRICO DEPOT'));
+        $this->assertSame([], $tagsOf('CB LECLERC'));
+        $this->assertSame(['Martin'], $tagsOf('VIR MARTIN ACOMPTE'));
+        $this->assertSame(2, MoneyTag::query()->whereNull('archived_at')->count());
+        $this->assertSame(1, $dupont->transactions()->count());
+
+        // La page du chantier compte ces frais et l'acompte.
+        $martin = MoneyTag::query()->where('name', 'Martin')->sole();
+        $this->get(route('tags.show', $martin))->assertOk()->assertSee('CB BRICO DEPOT')->assertSee('VIR MARTIN ACOMPTE');
     }
 
     public function test_unreadable_files_are_explained(): void

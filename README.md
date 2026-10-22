@@ -20,6 +20,8 @@ envoie chaque lundi les paiements reçus et les frais des chantiers.
 - Dépenses et revenus fixes notés tout seuls, solde prévu en fin de mois.
 - Import de relevés bancaires PDF (celui envoyé par la banque), CSV ou OFX, plusieurs
   d'un coup (doublons écartés, même si les relevés se recouvrent), catégories apprises.
+- Chantier choisi à l'import du relevé, ligne par ligne ou d'un coup sur toutes les
+  sorties pro cochées (nouveau chantier créé en tapant son nom).
 - Classement perso / pro de chaque opération : à l'import (proposition d'après vos
   choix précédents, la catégorie ou le compte), sur chaque mouvement, et page « À
   classer » pour les comptes mixtes (perso et pro sur le même compte).
