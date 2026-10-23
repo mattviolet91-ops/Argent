@@ -133,7 +133,7 @@
         count++;
       });
       if (status) {
-        status.textContent = count ? '« ' + value + ' » mis sur ' + count + ' sortie' + (count > 1 ? 's' : '') + '.' : 'Aucune sortie pro cochée.';
+        status.textContent = count ? '« ' + value + ' » mis sur ' + count + ' sortie' + (count > 1 ? 's' : '') + '.' : 'Aucune sortie en Pro : passez d\'abord les frais du chantier en Pro (ligne par ligne, ou « Tout en Pro »), ou tapez le chantier sur chaque ligne.';
       }
     });
   }

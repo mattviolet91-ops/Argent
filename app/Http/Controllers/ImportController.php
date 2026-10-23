@@ -52,6 +52,7 @@ class ImportController extends Controller
             'files_count' => ['integer', 'min:1', 'max:24'],
             'files.*' => ['file', 'max:8192', 'mimes:csv,txt,ofx,qfx,xml,pdf'],
             'file' => ['nullable', 'file', 'max:8192', 'mimes:csv,txt,ofx,qfx,xml,pdf'],
+            'pdf_password' => ['nullable', 'string', 'max:100'],
         ], [
             'files_count.min' => 'Choisissez le fichier du relevé.',
             'files_count.max' => '24 fichiers au plus à la fois.',
@@ -66,10 +67,13 @@ class ImportController extends Controller
         $rows = [];
         $kept = [];
         $unread = [];
-        foreach ($files as $file) {
-            $parsed = $this->importer->parse((string) file_get_contents($file->getRealPath()));
+        $reports = [];
+        foreach ($files as $number => $file) {
+            $parsed = $this->importer->parse((string) file_get_contents($file->getRealPath()), (string) $request->input('pdf_password', ''));
             if ($parsed === []) {
-                $unread[] = $file->getClientOriginalName();
+                $issue = $this->importer->pdfIssue ?? 'empty';
+                $unread[] = $file->getClientOriginalName().' ('.self::ISSUES[$issue].')';
+                $reports[] = self::report($number + 1, $issue, $this->importer->pdfReport);
             }
             $counts = [];
             foreach ($parsed as $row) {
@@ -82,7 +86,10 @@ class ImportController extends Controller
             }
         }
         if ($rows === []) {
-            throw ValidationException::withMessages(['file' => 'Aucune opération reconnue. Un relevé PDF doit être celui de la banque (pas une photo ou un scan) ; sinon, exportez les opérations en CSV (ou OFX) depuis l\'espace en ligne de la banque.']);
+            $issues = array_unique(array_column($reports, 'issue'));
+            $request->session()->flash('import_report', implode("\n\n", array_column($reports, 'text')));
+            $request->session()->flash('import_issue', $issues[0] ?? 'empty');
+            throw ValidationException::withMessages(['file' => count($issues) === 1 ? self::HELP[$issues[0]] : self::HELP['empty']]);
         }
         // Plusieurs relevés : remis dans l'ordre des dates (un seul : l'ordre du fichier).
         if (count($files) > 1) {
@@ -96,6 +103,47 @@ class ImportController extends Controller
         $request->session()->put(self::SESSION_KEY, $path);
 
         return redirect()->route('import.show');
+    }
+
+    /** Pourquoi un fichier n'a rien donné (en bref, dans la liste des fichiers). */
+    private const ISSUES = [
+        'password' => 'demande un mot de passe',
+        'unreadable' => 'fichier abîmé',
+        'no_text' => 'image sans texte',
+        'layout' => 'lignes non reconnues',
+        'empty' => 'aucune opération trouvée',
+    ];
+
+    /** Que faire, selon le problème. */
+    private const HELP = [
+        'password' => 'Ce relevé demande un mot de passe pour s\'ouvrir : tapez-le dans « Le PDF demande un mot de passe ? » (il ne sert qu\'à le lire, il n\'est pas gardé).',
+        'unreadable' => 'Ce fichier PDF n\'a pas pu être ouvert (abîmé, ou pas vraiment un PDF). Téléchargez-le à nouveau depuis l\'app ou le site de la banque.',
+        'no_text' => 'Ce PDF ne contient qu\'une image (scan, photo ou capture d\'écran) : il n\'y a aucun texte à lire. Prenez le relevé PDF de la banque (dans son app ou sur son site, rubrique Relevés / Documents), ou l\'export CSV des opérations.',
+        'layout' => 'Le texte du relevé est bien lu, mais ses lignes d\'opérations ne sont pas reconnues. Copiez les « détails techniques » ci-dessous (ni montant ni libellé dedans) et envoyez-les pour que ce format soit ajouté. En attendant : export CSV des opérations depuis le site de la banque.',
+        'empty' => 'Aucune opération reconnue. Prenez le relevé PDF de la banque (pas une photo ou un scan), ou exportez les opérations en CSV (ou OFX) depuis l\'espace en ligne de la banque.',
+    ];
+
+    /**
+     * Détails d'un fichier non lu, sans montant ni libellé : de quoi comprendre un format de relevé.
+     *
+     * @param  array<string, mixed>  $seen
+     * @return array{issue: string, text: string}
+     */
+    private static function report(int $number, string $issue, array $seen): array
+    {
+        $lines = [
+            'Fichier '.$number.' : '.$issue,
+            'Protection : '.($seen['protection'] ?? 'aucune'),
+            'Logiciel : '.($seen['producer'] ?? '?'),
+            'Pages : '.($seen['pages'] ?? '?').' · morceaux de texte : '.($seen['pieces'] ?? '?').' · caractères : '.($seen['characters'] ?? '?')
+                .' · lignes datées : '.($seen['dated_lines'] ?? '?').' · en-tête Débit/Crédit : '.(! empty($seen['header']) ? 'oui' : 'non'),
+        ];
+        if (! empty($seen['shapes'])) {
+            $lines[] = 'Allure des lignes :';
+            array_push($lines, ...$seen['shapes']);
+        }
+
+        return ['issue' => $issue, 'text' => implode("\n", $lines)];
     }
 
     public function show(Request $request): View|RedirectResponse

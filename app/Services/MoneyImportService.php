@@ -9,10 +9,15 @@ use App\Models\MoneyRule;
 use App\Models\MoneyScopeRule;
 use App\Models\MoneyTransaction;
 use App\Support\Money;
+use App\Support\PdfDecryptor;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Smalot\PdfParser\Header as PdfHeader;
+use Smalot\PdfParser\Page as PdfPage;
 use Smalot\PdfParser\Parser as PdfParser;
+use Smalot\PdfParser\PDFObject;
+use Smalot\PdfParser\XObject\Form as PdfForm;
 
 /**
  * Import d'un relevé bancaire : fichier CSV (export Excel de la banque) ou OFX.
@@ -38,11 +43,13 @@ class MoneyImportService
      *
      * @return list<array{date: string, label: string, amount: int, fitid: ?string, guessed?: bool}>
      */
-    public function parse(string $content): array
+    public function parse(string $content, string $password = ''): array
     {
+        $this->pdfIssue = null;
+        $this->pdfReport = [];
         // Relevé PDF (celui envoyé par la banque chaque mois).
         if (str_starts_with(ltrim(substr($content, 0, 1024)), '%PDF')) {
-            return array_slice($this->parsePdf($content), 0, self::MAX_ROWS);
+            return array_slice($this->parsePdf($content, $password), 0, self::MAX_ROWS);
         }
         $content = $this->toUtf8($content);
 
@@ -265,33 +272,79 @@ class MoneyImportService
     ];
 
     /** Lignes d'un relevé qui ne sont pas des opérations. */
-    private const PDF_SKIP = '/^\s*(ancien |nouveau )?(solde|total|totaux|sous total|report|a reporter|reporte)\b|\bsolde (crediteur|debiteur|au|precedent|en votre faveur)\b/';
+    private const PDF_SKIP = '/^\s*(ancien |nouveau )?solde\b|^\s*(total|totaux|sous[- ]total)\s*(des|du|de|operations|mouvements|debits?|credits?|periode|mensuel|:|$)|^\s*(report|a reporter|reporte)\b|\bsolde (crediteur|debiteur|au|precedent|en votre faveur|initial|final)\b|\btotal des (operations|mouvements)\b/';
+
+    /** Mois en lettres (« 5 oct. », « 05 OCTOBRE 2026 »). */
+    private const MONTH_PATTERN = '(janv?|f[ée]vr?|mars?|avr|mai|juin|juil|ao[uû]t?|sept?|oct|nov|d[ée]c)[a-zéû]*\.?';
+
+    /**
+     * Pourquoi le dernier relevé PDF n'a rien donné : password (mot de passe à l'ouverture),
+     * unreadable (fichier abîmé), no_text (scan, photo), layout (lignes non reconnues).
+     */
+    public ?string $pdfIssue = null;
+
+    /**
+     * Ce qui a été vu dans le dernier relevé PDF, sans montant ni libellé (pour le dépannage).
+     *
+     * @var array<string, mixed>
+     */
+    public array $pdfReport = [];
 
     /**
      * Relevé PDF : les lignes qui commencent par une date et finissent par un montant. Le
      * sens (sortie ou entrée) vient de la colonne Débit / Crédit, sinon du signe, sinon du
-     * libellé (« VIR SEPA RECU », « REMISE »…) : à vérifier dans l'aperçu.
+     * libellé (« VIR SEPA RECU », « REMISE »…) : à vérifier dans l'aperçu. Les relevés
+     * protégés (chiffrés, sans mot de passe pour les ouvrir) sont d'abord déchiffrés.
      *
      * @return list<array{date: string, label: string, amount: int, fitid: null, guessed: bool}>
      */
-    private function parsePdf(string $content): array
+    private function parsePdf(string $content, string $password = ''): array
     {
+        $this->pdfReport = ['protection' => PdfDecryptor::isEncrypted($content) ? PdfDecryptor::describe($content) : null];
+        if ($this->pdfReport['protection'] !== null) {
+            $decrypted = PdfDecryptor::decrypt($content, $password);
+            if ($decrypted === null) {
+                $this->pdfIssue = 'password';
+
+                return [];
+            }
+            $content = $decrypted;
+        }
         try {
             $pdf = (new PdfParser)->parseContent($content);
+            $pages = $pdf->getPages();
         } catch (\Throwable) {
+            $this->pdfIssue = 'unreadable';
+
             return [];
         }
+        $details = $pdf->getDetails();
+        $this->pdfReport += [
+            'producer' => Str::limit(trim(($details['Producer'] ?? '').' / '.($details['Creator'] ?? ''), ' /'), 80) ?: null,
+            'pages' => count($pages),
+        ];
 
         // Le texte, ligne par ligne (même hauteur sur la page), de gauche à droite.
         $lines = [];
         $text = '';
-        foreach ($pdf->getPages() as $pageIndex => $page) {
+        $pieces = 0;
+        foreach ($pages as $pageIndex => $page) {
             $rows = [];
-            foreach ($page->getDataTm() as $item) {
+            // Texte de la page, et des blocs qu'elle affiche (certains relevés y mettent tout le tableau).
+            $data = [];
+            foreach ([$page, ...$this->pdfFormPages($page)] as $source) {
+                try {
+                    $data = [...$data, ...$source->getDataTm()];
+                } catch (\Throwable) {
+                    // Bloc illisible : ignoré.
+                }
+            }
+            foreach ($data as $item) {
                 $value = trim(preg_replace('/[ \t\r\n]+/', ' ', (string) ($item[1] ?? '')) ?? '');
                 if ($value === '') {
                     continue;
                 }
+                $pieces++;
                 $y = (float) $item[0][5];
                 $key = null;
                 foreach (array_keys($rows) as $existing) {
@@ -307,15 +360,28 @@ class MoneyImportService
             uksort($rows, fn ($a, $b) => (float) $b <=> (float) $a);
             foreach ($rows as $y => $items) {
                 usort($items, fn ($a, $b) => $a[0] <=> $b[0]);
-                $lines[] = ['y' => (float) $y, 'page' => $pageIndex, 'items' => $this->splitPdfItems($items)];
+                $lines[] = ['y' => (float) $y, 'page' => $pageIndex, 'items' => $this->splitPdfItems($this->mergePdfGlyphs($items))];
             }
+        }
+        // Texte entier (il comprend aussi les blocs que la lecture ligne par ligne ne voit pas).
+        try {
+            $fullText = $pdf->getText();
+        } catch (\Throwable) {
+            $fullText = '';
+        }
+        $this->pdfReport['pieces'] = $pieces;
+        $this->pdfReport['characters'] = mb_strlen(trim($fullText.$text));
+        if ($this->pdfReport['characters'] < 20) {
+            $this->pdfIssue = 'no_text';
+
+            return [];
         }
 
         // Année des dates « 05/10 » : celle de la fin du relevé (« … au 31/10/2026 »).
         $end = null;
-        if (preg_match_all('/\b(\d{2})[\/.](\d{2})[\/.](\d{4})\b/', $text, $m, PREG_SET_ORDER)) {
+        if (preg_match_all('/\b(\d{2})[\/.](\d{2})[\/.](\d{4})\b/', $text.' '.$fullText, $m, PREG_SET_ORDER)) {
             foreach ($m as $match) {
-                if (checkdate((int) $match[2], (int) $match[1], (int) $match[3]) && (int) $match[3] >= 2000) {
+                if (checkdate((int) $match[2], (int) $match[1], (int) $match[3]) && (int) $match[3] >= 2000 && (int) $match[3] <= today()->year + 1) {
                     $date = sprintf('%04d-%02d-%02d', $match[3], $match[2], $match[1]);
                     $end = max($end ?? $date, $date);
                 }
@@ -323,71 +389,114 @@ class MoneyImportService
         }
         $endDate = $end ? Carbon::parse($end) : today();
 
+        $rows = $this->pdfRowsFromLines($lines, $endDate);
+        // Peu ou rien trouvé ligne par ligne : lecture du texte entier.
+        $fromText = $this->pdfRowsFromText($fullText, $endDate);
+        if (count($fromText) > max(1.5 * count($rows), count($rows) + 2)) {
+            $rows = $fromText;
+        }
+        if ($rows === []) {
+            $this->pdfIssue = 'layout';
+            $this->pdfReport['shapes'] = $this->pdfShapes($lines, $fullText);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Blocs de texte (« Form XObject ») qu'affiche une page, relus comme des pages à part :
+     * un relevé ré-imprimé en PDF (iPhone : Partager → Imprimer) met souvent tout dedans.
+     *
+     * @return list<PdfPage>
+     */
+    private function pdfFormPages(PdfPage $page): array
+    {
+        try {
+            $forms = [];
+            foreach ($page->getXObjects() as $form) {
+                if ($form instanceof PdfForm) {
+                    $forms[spl_object_id($form)] = $form;
+                }
+            }
+            $pages = [];
+            foreach ($forms as $form) {
+                $document = $form->getDocument();
+                $content = new PDFObject($document, new PdfHeader([], $document), (string) $form->getContent(), $form->getConfig());
+                $pages[] = new PdfPage($document, new PdfHeader(['Contents' => $content, 'Resources' => $form->get('Resources')], $document), null, $form->getConfig());
+            }
+
+            return $pages;
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Opérations d'après la position des textes sur la page (colonnes Débit / Crédit…).
+     *
+     * @param  list<array{y: float, page: int, items: list<array{0: float, 1: string}>}>  $lines
+     * @return list<array{date: string, label: string, amount: int, fitid: null, guessed: bool}>
+     */
+    private function pdfRowsFromLines(array $lines, Carbon $endDate): array
+    {
         $columns = null;
         $result = [];
         $orphans = [];
-        foreach ($lines as $index => $line) {
-            $words = array_map(fn ($item) => Str::of($item[1])->ascii()->lower()->value(), $line['items']);
-            // En-tête du tableau : où sont les colonnes Débit et Crédit.
-            $debit = $credit = null;
-            foreach ($line['items'] as $i => $item) {
-                if (preg_match('/^debit/', $words[$i])) {
-                    $debit = $this->pdfCenter($item);
-                } elseif (preg_match('/^credit/', $words[$i])) {
-                    $credit = $this->pdfCenter($item);
-                }
-            }
-            if ($debit !== null && $credit !== null) {
-                $columns = ['debit' => $debit, 'credit' => $credit];
-
-                continue;
-            }
-
+        $dated = 0;
+        foreach ($lines as $line) {
             $items = $line['items'];
-            $first = $items[0][1] ?? '';
-            if (! preg_match('/^(\d{2})[\/.](\d{2})(?:[\/.](\d{2}|\d{4}))?$/', $first, $d)) {
-                // Morceau de libellé sur sa propre ligne : rattaché ensuite à l'opération la plus proche.
-                if (! $this->pdfAmountIndex($items) && ! preg_match(self::PDF_SKIP, implode(' ', $words))) {
-                    $orphans[] = ['y' => $line['y'], 'x' => $items[0][0], 'page' => $line['page'], 'text' => implode(' ', array_column($items, 1))];
+            $date = $this->takePdfDate($items);
+            if ($date === null) {
+                $plain = Str::of(implode(' ', array_column($items, 1)))->ascii()->lower()->value();
+                if ($this->pdfAmountIndex($items, 0) === null) {
+                    // En-tête du tableau : où sont les colonnes Débit et Crédit.
+                    if ($found = $this->pdfColumns($items)) {
+                        $columns = $found;
+                        $this->pdfReport['header'] = true;
+
+                        continue;
+                    }
+                    // Morceau de libellé sur sa propre ligne : rattaché ensuite à l'opération la plus proche.
+                    if (! preg_match(self::PDF_SKIP, $plain)) {
+                        $orphans[] = ['y' => $line['y'], 'x' => $items[0][0], 'page' => $line['page'], 'text' => implode(' ', array_column($items, 1))];
+                    }
                 }
 
                 continue;
             }
-            array_shift($items);
+            $dated++;
+            [$day, $month, $year, $items] = $date;
             // Deuxième date (date de valeur) : ignorée.
-            if (isset($items[0]) && preg_match('/^\d{2}[\/.]\d{2}(?:[\/.]\d{2,4})?$/', $items[0][1])) {
-                array_shift($items);
+            if ($second = $this->takePdfDate($items)) {
+                $items = $second[3];
             }
             $amountIndex = $this->pdfAmountIndex($items, 0);
             if ($amountIndex === null) {
                 continue;
             }
             $amountItem = $items[$amountIndex];
-            $label = trim(implode(' ', array_column(array_slice($items, 0, $amountIndex), 1)));
+            $labelItems = array_slice($items, 0, $amountIndex);
+            // Date de valeur placée après le libellé (« … 03.10 45,20 ») : ignorée aussi.
+            while ($labelItems !== [] && preg_match('/^\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?$/', end($labelItems)[1])) {
+                array_pop($labelItems);
+            }
+            $label = trim(implode(' ', array_column($labelItems, 1)));
             $plain = ' '.Str::of($label)->ascii()->lower()->value().' ';
             if (preg_match(self::PDF_SKIP, $plain)) {
                 continue;
             }
-
-            $raw = $amountItem[1];
-            $cents = abs((int) $this->amount(preg_replace('/\s*(€|eur)$/i', '', $raw) ?? $raw));
-            if ($cents === 0) {
-                continue;
-            }
-            $year = isset($d[3]) ? (strlen($d[3]) === 2 ? 2000 + (int) $d[3] : (int) $d[3]) : $endDate->year;
-            if (! isset($d[3]) && (int) $d[2] > $endDate->month + 1) {
-                $year--;
-            }
-            if (! checkdate((int) $d[2], (int) $d[1], $year)) {
+            $cents = abs((int) $this->amount($amountItem[1]));
+            $full = $this->pdfDate($day, $month, $year, $endDate);
+            if ($cents === 0 || $full === null) {
                 continue;
             }
             $result[] = [
-                'date' => sprintf('%04d-%02d-%02d', $year, $d[2], $d[1]),
-                'before' => [], 'label' => $label, 'after' => [],
-                'raw' => $raw, 'center' => $this->pdfCenter($amountItem), 'columns' => $columns,
-                'y' => $line['y'], 'page' => $line['page'], 'x' => $amountIndex > 0 ? $items[0][0] : null,
+                'date' => $full, 'before' => [], 'label' => $label, 'after' => [],
+                'raw' => $amountItem[1], 'center' => $this->pdfCenter($amountItem), 'columns' => $columns,
+                'y' => $line['y'], 'page' => $line['page'], 'x' => $labelItems !== [] ? $labelItems[0][0] : null,
             ];
         }
+        $this->pdfReport['dated_lines'] = $dated;
 
         // Lignes de libellé seules : à l'opération la plus proche sur la page (celle du dessus si égalité).
         foreach ($orphans as $orphan) {
@@ -409,41 +518,254 @@ class MoneyImportService
         $rows = [];
         foreach ($result as $row) {
             $label = Str::squish(implode(' ', [...$row['before'], $row['label'], ...$row['after']]));
-            $plain = ' '.Str::of($label)->ascii()->lower()->value().' ';
             if ($label === '') {
                 continue;
             }
-            // Sens : signe du montant, sinon colonne Débit / Crédit, sinon le libellé.
-            $raw = $row['raw'];
-            if (str_starts_with($raw, '-') || str_ends_with($raw, '-')) {
-                $sign = -1;
-            } elseif (str_starts_with($raw, '+')) {
-                $sign = 1;
-            } elseif ($row['columns']) {
+            $sign = $this->pdfSign($row['raw'], $label);
+            if ($sign === null && $row['columns']) {
                 $sign = abs($row['center'] - $row['columns']['credit']) < abs($row['center'] - $row['columns']['debit']) ? 1 : -1;
-            } else {
-                $sign = -1;
-                foreach (self::CREDIT_WORDS as $word) {
-                    if (str_contains($plain, $word)) {
-                        $sign = 1;
-                        break;
-                    }
-                }
             }
-            $rows[] = [
-                'date' => $row['date'],
-                'label' => mb_substr($label, 0, 160),
-                'amount' => $sign * abs((int) $this->amount(preg_replace('/\s*(€|eur)$/i', '', $raw) ?? $raw)),
-                'fitid' => null,
-                'guessed' => true,
-            ];
+            $rows[] = ['date' => $row['date'], 'label' => $label, 'raw' => $row['raw'], 'sign' => $sign];
         }
 
-        return $rows;
+        return $this->pdfSignedRows($rows);
     }
 
     /**
-     * Morceaux de texte collés (« 02/10 CB CARREFOUR », « CARREFOUR 45,20 ») : séparés.
+     * Montants sans signe : si le relevé marque ses sorties d'un « − », ce sont des entrées ;
+     * sinon le libellé décide (pdfRow).
+     *
+     * @param  list<array{date: string, label: string, raw: string, sign: ?int}>  $rows
+     * @return list<array{date: string, label: string, amount: int, fitid: null, guessed: bool}>
+     */
+    private function pdfSignedRows(array $rows): array
+    {
+        $marked = in_array(-1, array_column($rows, 'sign'), true) && ! in_array(1, array_column($rows, 'sign'), true);
+
+        return array_map(fn ($row) => $this->pdfRow($row['date'], $row['label'], $row['raw'], $row['sign'] ?? ($marked ? 1 : null)), $rows);
+    }
+
+    /**
+     * Opérations d'après le texte entier, ligne après ligne : une date ouvre une opération,
+     * le premier montant la ferme (le libellé peut tenir sur plusieurs lignes).
+     *
+     * @return list<array{date: string, label: string, amount: int, fitid: null, guessed: bool}>
+     */
+    private function pdfRowsFromText(string $text, Carbon $endDate): array
+    {
+        $rows = [];
+        $current = null;
+        foreach (preg_split('/\R/u', $text) ?: [] as $line) {
+            $parts = array_values(array_filter(array_map('trim', preg_split('/\t+| {2,}/u', $line) ?: []), fn ($p) => $p !== ''));
+            if ($parts === []) {
+                continue;
+            }
+            $items = $this->splitPdfItems(array_map(fn ($part, $i) => [(float) $i * 100, $part], $parts, array_keys($parts)));
+            if ($date = $this->takePdfDate($items)) {
+                [$day, $month, $year, $items] = $date;
+                if ($second = $this->takePdfDate($items)) {
+                    $items = $second[3];
+                }
+                $current = ['date' => $this->pdfDate($day, $month, $year, $endDate), 'label' => []];
+            } elseif ($current === null) {
+                continue;
+            }
+            foreach ($items as $item) {
+                if ($this->isPdfAmount($item[1])) {
+                    $label = Str::squish(implode(' ', $current['label']));
+                    $plain = ' '.Str::of($label)->ascii()->lower()->value().' ';
+                    if ($current['date'] && $label !== '' && ! preg_match(self::PDF_SKIP, $plain) && $this->amount($item[1])) {
+                        $rows[] = ['date' => $current['date'], 'label' => $label, 'raw' => $item[1], 'sign' => $this->pdfSign($item[1], $label)];
+                    }
+                    $current = null;
+                    break;
+                }
+                if (! preg_match('/^\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?$/', $item[1]) && count($current['label']) < 4) {
+                    $current['label'][] = $item[1];
+                }
+            }
+        }
+
+        return $this->pdfSignedRows($rows);
+    }
+
+    /** @return array{date: string, label: string, amount: int, fitid: null, guessed: bool} */
+    private function pdfRow(string $date, string $label, string $raw, ?int $sign): array
+    {
+        return [
+            'date' => $date,
+            'label' => mb_substr($label, 0, 160),
+            'amount' => ($sign ?? $this->pdfWordsSign($label)) * abs((int) $this->amount($raw)),
+            'fitid' => null,
+            'guessed' => true,
+        ];
+    }
+
+    /** Sens écrit sur le montant (« −45,20 », « + 1 200,00 », « 45,20- ») ; null s'il n'y en a pas. */
+    private function pdfSign(string $raw, string $label): ?int
+    {
+        $raw = trim($raw);
+        if (preg_match('/^[-−–]|-$/u', $raw)) {
+            return -1;
+        }
+
+        return str_starts_with($raw, '+') ? 1 : null;
+    }
+
+    /** Sens d'après le libellé : une sortie, sauf « VIR SEPA RECU », « REMISE »… */
+    private function pdfWordsSign(string $label): int
+    {
+        $plain = ' '.Str::of($label)->ascii()->lower()->value().' ';
+        foreach (self::CREDIT_WORDS as $word) {
+            if (str_contains($plain, $word)) {
+                return 1;
+            }
+        }
+
+        return -1;
+    }
+
+    /** Date complète ; l'année manquante est celle de la fin du relevé (l'année d'avant pour décembre sur un relevé de janvier). */
+    private function pdfDate(int $day, int $month, ?int $year, Carbon $endDate): ?string
+    {
+        if ($year === null) {
+            $year = $endDate->year - ($month > $endDate->month + 1 ? 1 : 0);
+        } elseif ($year < 100) {
+            $year += 2000;
+        }
+
+        return checkdate($month, $day, $year) ? sprintf('%04d-%02d-%02d', $year, $month, $day) : null;
+    }
+
+    /**
+     * Date en tête de ligne : « 05/10 », « 5.10.26 », « 05/10/2026 », « 5 oct. », « 05 OCTOBRE 2026 ».
+     *
+     * @param  list<array{0: float, 1: string}>  $items
+     * @return array{0: int, 1: int, 2: ?int, 3: list<array{0: float, 1: string}>}|null jour, mois, année, reste de la ligne
+     */
+    private function takePdfDate(array $items): ?array
+    {
+        if ($items === []) {
+            return null;
+        }
+        // Les premiers morceaux bout à bout (« 5 » « oct. » « 2026 » peuvent être séparés).
+        $joined = '';
+        $bounds = [];
+        foreach (array_slice($items, 0, 3) as $i => $item) {
+            $start = $joined === '' ? 0 : strlen($joined) + 1;
+            $joined .= ($joined === '' ? '' : ' ').$item[1];
+            $bounds[$i] = [$start, strlen($joined)];
+        }
+        if (preg_match('/^(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{4}|\d{2}))?(?=\s|$)/u', $joined, $m)) {
+            $month = (int) $m[2];
+        } elseif (preg_match('/^(\d{1,2})(?:er)?\s*'.self::MONTH_PATTERN.'(?:\s+(\d{4}))?(?=\s|$)/iu', $joined, $m)) {
+            $month = self::monthNumber($m[2]);
+            $m[3] = $m[3] ?? '';
+        } else {
+            return null;
+        }
+        if ($month < 1 || $month > 12 || (int) $m[1] < 1 || (int) $m[1] > 31) {
+            return null;
+        }
+        $used = strlen($m[0]);
+        $rest = [];
+        foreach ($items as $i => $item) {
+            [$start, $end] = $bounds[$i] ?? [PHP_INT_MAX, PHP_INT_MAX];
+            if ($end <= $used) {
+                continue;
+            }
+            if ($start < $used) {
+                $remainder = trim(substr($item[1], $used - $start));
+                if ($remainder !== '') {
+                    $rest[] = [$item[0] + ($used - $start) * 5, $remainder];
+                }
+
+                continue;
+            }
+            $rest[] = $item;
+        }
+
+        return [(int) $m[1], $month, ($m[3] ?? '') !== '' ? (int) $m[3] : null, $rest];
+    }
+
+    private static function monthNumber(string $name): int
+    {
+        $name = Str::of($name)->ascii()->lower()->value();
+        if (str_starts_with($name, 'jui')) {
+            return str_starts_with($name, 'juil') ? 7 : 6;
+        }
+
+        return ['jan' => 1, 'fev' => 2, 'mar' => 3, 'avr' => 4, 'mai' => 5, 'aou' => 8, 'sep' => 9, 'oct' => 10, 'nov' => 11, 'dec' => 12][substr($name, 0, 3)] ?? 0;
+    }
+
+    /**
+     * En-tête du tableau : position des colonnes des sorties et des entrées
+     * (« Débit / Crédit », « Sorties / Entrées », « Retraits / Dépôts »…).
+     *
+     * @param  list<array{0: float, 1: string}>  $items
+     * @return array{debit: float, credit: float}|null
+     */
+    private function pdfColumns(array $items): ?array
+    {
+        $debit = $credit = null;
+        foreach ($items as $item) {
+            $text = Str::of($item[1])->ascii()->lower()->value();
+            // Un morceau peut contenir plusieurs titres (« Débit Crédit ») : position estimée de chaque mot.
+            foreach (preg_split('/\s+/', $text, -1, PREG_SPLIT_OFFSET_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [] as [$word, $at]) {
+                $center = $item[0] + ($at + strlen($word) / 2) * 5;
+                if (preg_match('/^(debits?|sorties?|retraits?|sortant|depenses?)\b/', $word)) {
+                    $debit ??= $center;
+                } elseif (preg_match('/^(credits?|entrees?|depots?|entrant|recettes?)\b/', $word)) {
+                    $credit ??= $center;
+                }
+            }
+        }
+
+        return $debit !== null && $credit !== null ? ['debit' => $debit, 'credit' => $credit] : null;
+    }
+
+    /**
+     * Texte écrit lettre par lettre (certains relevés) : les lettres proches sont remises en mots.
+     *
+     * @param  list<array{0: float, 1: string}>  $items
+     * @return list<array{0: float, 1: string}>
+     */
+    private function mergePdfGlyphs(array $items): array
+    {
+        $count = count($items);
+        $singles = count(array_filter($items, fn ($item) => mb_strlen($item[1]) === 1));
+        if ($count < 6 || $singles < $count * 0.6) {
+            return $items;
+        }
+        $advances = [];
+        for ($i = 1; $i < $count; $i++) {
+            $gap = $items[$i][0] - $items[$i - 1][0];
+            if ($gap > 0) {
+                $advances[] = $gap / max(1, mb_strlen($items[$i - 1][1]));
+            }
+        }
+        sort($advances);
+        $advance = $advances[intdiv(count($advances), 2)] ?? 5.0;
+        $out = [];
+        $end = null;
+        foreach ($items as $item) {
+            $gap = $end === null ? INF : $item[0] - $end;
+            if ($gap <= $advance * 0.6) {
+                $out[count($out) - 1][1] .= $item[1];
+            } elseif ($gap <= $advance * 2.2) {
+                $out[count($out) - 1][1] .= ' '.$item[1];
+            } else {
+                $out[] = $item;
+            }
+            $end = $item[0] + mb_strlen($item[1]) * $advance;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Morceaux de texte collés (« 02/10 CB CARREFOUR », « CARREFOUR 45,20 ») : séparés ;
+     * signe seul devant un montant (« − » « 45,20 ») : rattaché.
      *
      * @param  list<array{0: float, 1: string}>  $items
      * @return list<array{0: float, 1: string}>
@@ -452,17 +774,17 @@ class MoneyImportService
     {
         $out = [];
         foreach ($items as $index => [$x, $value]) {
-            if ($index === 0 && preg_match('/^(\d{2}[\/.]\d{2}(?:[\/.]\d{2,4})?)\s+(.+)$/u', $value, $m)) {
+            if ($index === 0 && preg_match('/^(\d{1,2}[\/.]\d{1,2}(?:[\/.]\d{2,4})?)\s+(.+)$/u', $value, $m)) {
                 $out[] = [$x, $m[1]];
                 $value = $m[2];
                 $x += 30;
-                if (preg_match('/^(\d{2}[\/.]\d{2}(?:[\/.]\d{2,4})?)\s+(.+)$/u', $value, $n)) {
+                if (preg_match('/^(\d{1,2}[\/.]\d{1,2}(?:[\/.]\d{2,4})?)\s+(.+)$/u', $value, $n)) {
                     $out[] = [$x, $n[1]];
                     $value = $n[2];
                     $x += 30;
                 }
             }
-            if (preg_match('/^(.*\D)\s+([+-]?\d{1,3}(?:[ .\x{00A0}\x{202F}]\d{3})*,\d{2}\s*(?:€|EUR)?)$/u', $value, $m) && ! $this->isPdfAmount($value)) {
+            if (preg_match('/^(.*\D)\s+((?:[+\-−]\s?)?\d{1,3}(?:[ .\x{00A0}\x{202F}]\d{3})*,\d{2}\s*(?:€|EUR)?-?)$/u', $value, $m) && ! $this->isPdfAmount($value) && ! preg_match('/[+\-−]$/u', trim($m[1]))) {
                 $out[] = [$x, trim($m[1])];
                 $out[] = [$x + 6 * mb_strlen($m[1]), $m[2]];
 
@@ -470,13 +792,24 @@ class MoneyImportService
             }
             $out[] = [$x, $value];
         }
+        // « − » ou « + » seul, puis le montant.
+        $merged = [];
+        foreach ($out as $item) {
+            $last = end($merged);
+            if ($last !== false && in_array($last[1], ['-', '+', '−', '–'], true) && $this->isPdfAmount($item[1])) {
+                $merged[count($merged) - 1] = [$last[0], $last[1].$item[1]];
 
-        return $out;
+                continue;
+            }
+            $merged[] = $item;
+        }
+
+        return $merged;
     }
 
     private function isPdfAmount(string $value): bool
     {
-        return (bool) preg_match('/^[+-]?\d{1,3}(?:[ .\x{00A0}\x{202F}]?\d{3})*,\d{2}\s*(?:€|EUR)?-?$/u', $value);
+        return (bool) preg_match('/^(?:[+\-−–]\s?)?\d{1,3}(?:[ .\x{00A0}\x{202F}]?\d{3})*,\d{2}\s*(?:€|EUR)?\s*-?$/u', trim($value));
     }
 
     /**
@@ -499,6 +832,35 @@ class MoneyImportService
     private function pdfCenter(array $item): float
     {
         return $item[0] + mb_strlen($item[1]) * 2.5;
+    }
+
+    /**
+     * Allure des premières lignes, sans les données : lettres → « a », chiffres → « 9 »
+     * (« 99/99 aaa aaaaaaaa | 99,99 »), pour comprendre un relevé non reconnu.
+     *
+     * @param  list<array{y: float, page: int, items: list<array{0: float, 1: string}>}>  $lines
+     * @return list<string>
+     */
+    private function pdfShapes(array $lines, string $fullText): array
+    {
+        $mask = fn (string $s) => mb_substr(preg_replace(['/\p{L}/u', '/\d/'], ['a', '9'], $s) ?? '', 0, 90);
+        $shapes = [];
+        foreach ($lines as $line) {
+            $shape = implode(' | ', array_map(fn ($item) => $mask($item[1]), $line['items']));
+            if (preg_match('/9/', $shape)) {
+                $shapes[] = $shape;
+            }
+            if (count($shapes) >= 12) {
+                break;
+            }
+        }
+        if ($shapes === []) {
+            foreach (array_slice(array_filter(preg_split('/\R/u', $fullText) ?: [], fn ($l) => preg_match('/\d/', $l)), 0, 12) as $line) {
+                $shapes[] = $mask(str_replace("\t", ' | ', $line));
+            }
+        }
+
+        return $shapes;
     }
 
     /** @return list<array{date: string, label: string, amount: int, fitid: ?string}> */
@@ -630,7 +992,8 @@ class MoneyImportService
     private function amount(string $value): ?int
     {
         $value = str_replace(['EUR', '€', '+', ' ', "\u{00A0}", "\u{202F}", '−', '–'], ['', '', '', '', '', '', '-', '-'], trim($value));
-        if (preg_match('/^\((.*)\)$/', $value, $m)) {
+        // « (45,20) » et « 45,20- » : négatifs.
+        if (preg_match('/^\((.*)\)$/', $value, $m) || preg_match('/^([^-].*)-$/', $value, $m)) {
             $value = '-'.$m[1];
         }
         if (str_contains($value, ',') && str_contains($value, '.')) {

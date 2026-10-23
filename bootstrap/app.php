@@ -22,5 +22,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn () => route('dashboard'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Jamais gardés pour réafficher un formulaire après une erreur.
+        $exceptions->dontFlash(['current_password', 'password', 'password_confirmation', 'code', 'code_confirmation', 'current_code', 'widget_code', 'pdf_password']);
     })->create();

@@ -49,7 +49,8 @@
                 @if (session('status'))
                     <div class="alert alert-success" role="status">{{ session('status') }}</div>
                 @endif
-                @if ($errors->any() && ! $errors->hasAny(['type', 'amount', 'account_id', 'to_account_id', 'category_id', 'label', 'occurred_on', 'notes']))
+                {{-- Page d'import : l'explication est déjà sous le champ du fichier. --}}
+                @if ($errors->any() && ! $errors->hasAny(['type', 'amount', 'account_id', 'to_account_id', 'category_id', 'label', 'occurred_on', 'notes']) && ! (request()->routeIs('import.create') && $errors->has('file')))
                     <div class="alert alert-error" role="alert">{{ $errors->first() }}</div>
                 @endif
                 @yield('content')

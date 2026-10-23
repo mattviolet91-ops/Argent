@@ -18,7 +18,7 @@
     </div>
 
     @if ($unread)
-        <div class="alert alert-warning">Rien lu dans : {{ implode(', ', $unread) }}. Un PDF scanné (photo) ne se lit pas : prenez le relevé PDF de la banque, ou l'export CSV.</div>
+        <div class="alert alert-warning">Rien lu dans : {{ implode(', ', $unread) }}. Les autres fichiers sont bien là ; pour celui-ci, réessayez seul pour voir le détail.</div>
     @endif
     @if ($guessed)
         <div class="alert alert-info">Relevé PDF : le sens de chaque opération (sortie <strong>−</strong> ou entrée <strong>+</strong>) a été deviné. Vérifiez les montants ; « Inverser » corrige une ligne.</div>
